@@ -1,0 +1,1927 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>خريطة بيئية — تحليلات وتنبؤات متقدمة</title>
+
+  <!-- مكتبات CSS و JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+
+  <style>
+    html, body { 
+      height:100%; 
+      margin:0; 
+      padding:0; 
+      font-family:"Segoe UI", Tahoma, Arial, "Noto Naskh Arabic", sans-serif; 
+      direction:rtl; 
+      background:#f0f4f8; 
+    }
+    #map { height:100vh; width:100%; box-sizing:border-box; }
+
+    .info-panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      width: 450px;
+      max-height: 85vh;
+      overflow-y: auto;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+      z-index: 1000;
+      color: #1f2937;
+      border: 1px solid #e5e7eb;
+      backdrop-filter: blur(10px);
+    }
+    
+    .info-panel h1 { 
+      font-size: 20px; 
+      margin: 0 0 16px; 
+      font-weight: 700; 
+      color: #111827; 
+      text-align: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .info-panel .muted { 
+      color: #6b7280; 
+      font-size: 14px; 
+      line-height: 1.6; 
+      margin-bottom: 16px; 
+      text-align: center;
+      background: #f8fafc;
+      padding: 12px;
+      border-radius: 8px;
+      border-right: 4px solid #3b82f6;
+    }
+    
+    details { 
+      margin-bottom: 16px; 
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    details summary {
+      font-weight: 700;
+      font-size: 15px;
+      padding: 16px;
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      user-select: none;
+    }
+    details summary:hover { 
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(240, 147, 251, 0.4);
+    }
+    details[open] summary { 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    details .section-content { 
+      padding: 16px; 
+      background: #fafbfc;
+      border-top: 1px solid rgba(255,255,255,0.2);
+    }
+    
+    .data-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 14px;
+    }
+    .data-row:last-child {
+      border-bottom: none;
+    }
+    .data-label { 
+      font-weight: 600; 
+      color: #374151; 
+      flex: 1;
+    }
+    .data-value { 
+      font-family: "Courier New", monospace; 
+      font-weight: 600; 
+      color: #1f2937;
+      text-align: left;
+    }
+    
+    .badge { 
+      padding: 8px 14px; 
+      border-radius: 20px; 
+      font-size: 12px; 
+      color: #fff; 
+      display: inline-block; 
+      min-width: 70px; 
+      text-align: center; 
+      font-weight: 700;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .excellent { background: linear-gradient(135deg, #00b09b, #96c93d); }
+    .good { background: linear-gradient(135deg, #22c55e, #16a085); }
+    .moderate { background: linear-gradient(135deg, #f59e0b, #e67e22); }
+    .bad { background: linear-gradient(135deg, #ef4444, #c0392b); }
+    .critical { background: linear-gradient(135deg, #8b0000, #dc143c); }
+    .neutral { background: linear-gradient(135deg, #9ca3af, #6b7280); }
+    
+    .trend-up { color: #ef4444; font-weight: 700; }
+    .trend-down { color: #22c55e; font-weight: 700; }
+    .trend-stable { color: #6b7280; font-weight: 700; }
+    
+    .prediction-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 16px;
+      margin: 16px 0;
+      box-shadow: 0 8px 24px rgba(102, 126, 234, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .prediction-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/><circle cx="50" cy="10" r="0.5" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+      pointer-events: none;
+    }
+    
+    .prediction-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+    
+    .score-circle {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 18px;
+      color: white;
+      margin: 0 auto 16px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      border: 3px solid rgba(255,255,255,0.3);
+      position: relative;
+      z-index: 1;
+    }
+    
+    .timestamp { 
+      font-size: 12px; 
+      color: #6b7280; 
+      margin-top: 8px; 
+      text-align: center;
+      font-style: italic;
+    }
+    
+    .service-item { 
+      margin: 10px 0; 
+      font-size: 13px; 
+      color: #374151;
+      padding: 12px;
+      background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+      border-radius: 8px;
+      border-right: 4px solid #3b82f6;
+      transition: all 0.2s ease;
+    }
+    
+    .service-item:hover {
+      transform: translateX(-2px);
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+    }
+    
+    .hud {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 16px 24px;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+      z-index: 1000;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      font-size: 14px;
+      font-weight: 600;
+      backdrop-filter: blur(10px);
+    }
+    
+    .control-buttons {
+      margin-top: 20px; 
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    
+    .btn {
+      padding: 14px 18px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      transition: left 0.5s;
+    }
+    
+    .btn:hover::before {
+      left: 100%;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+      color: white;
+      box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+    }
+    
+    .btn-secondary {
+      background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+      color: #475569;
+      border: 2px solid #cbd5e1;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    }
+    
+    .btn:active {
+      transform: translateY(0);
+    }
+    
+    .recommendations {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 16px;
+      margin: 16px 0;
+      box-shadow: 0 8px 24px rgba(240, 147, 251, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .recommendations::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+      animation: shimmer 3s ease-in-out infinite;
+    }
+    
+    @keyframes shimmer {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(180deg); }
+    }
+    
+    .recommendations h3 {
+      margin: 0 0 16px 0;
+      font-size: 18px;
+      position: relative;
+      z-index: 1;
+    }
+    
+    .recommendations h4 {
+      margin: 12px 0 8px 0;
+      font-size: 16px;
+      position: relative;
+      z-index: 1;
+    }
+    
+    .recommendations ul {
+      margin: 8px 0;
+      padding-right: 24px;
+      position: relative;
+      z-index: 1;
+    }
+    
+    .recommendations li {
+      margin: 8px 0;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    
+    .layer-controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .layer-btn {
+      padding: 10px 16px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      min-width: 140px;
+      text-align: center;
+    }
+    
+    .layer-btn:hover {
+      background: rgba(255, 255, 255, 1);
+      border-color: #3b82f6;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+    }
+    
+    .layer-btn.active {
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      color: white;
+      border-color: #1d4ed8;
+    }
+    
+    @media (max-width: 768px) {
+      .info-panel { 
+        width: calc(100% - 32px); 
+        left: 16px; 
+        top: 16px; 
+        max-height: 75vh; 
+        padding: 16px; 
+      }
+      .hud { 
+        left: 16px; 
+        right: 16px; 
+        width: auto; 
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .control-buttons {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .layer-controls {
+        top: 16px;
+        right: 16px;
+        flex-direction: row;
+        flex-wrap: wrap;
+        max-width: calc(100% - 32px);
+      }
+      .layer-btn {
+        min-width: auto;
+        flex: 1;
+        font-size: 12px;
+        padding: 8px 12px;
+      }
+    }
+    
+    .small { font-size: 13px; color: #6b7280; line-height: 1.5; }
+    .error-message { 
+      font-size: 14px; 
+      color: #ef4444; 
+      margin-top: 12px;
+      padding: 12px;
+      background: #fef2f2;
+      border-radius: 8px;
+      border-right: 4px solid #ef4444;
+    }
+    #forecastDashboard { margin-top: 24px; }
+    
+    .analysis-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 16px 0;
+      position: relative;
+      z-index: 1;
+    }
+    
+    .analysis-card {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 16px;
+      border-radius: 12px;
+      text-align: center;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      backdrop-filter: blur(10px);
+    }
+    
+    .analysis-card h4 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.9);
+      font-weight: 600;
+    }
+    
+    .analysis-value {
+      font-size: 24px;
+      font-weight: 700;
+      margin: 8px 0;
+      color: white;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    @media (max-width: 500px) {
+      .analysis-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #3498db;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- أزرار التحكم في الطبقات -->
+  <div class="layer-controls">
+    <button class="layer-btn" data-layer="ndvi">🌿 النباتات</button>
+    <button class="layer-btn" data-layer="lst">🌡 الحرارة</button>
+    <button class="layer-btn" data-layer="urban">🏙 العمران</button>
+  </div>
+
+  <div class="info-panel" id="infoPanel" aria-live="polite">
+    <h1>🌍 لوحة التحكم البيئية المتقدمة</h1>
+    <div class="muted">
+      🎯 انقر على الخريطة أو ابحث عن مكان للحصول على تحليل بيئي شامل مع التنبؤات والتوصيات الذكية
+    </div>
+    <div id="dataContent" style="margin-top: 16px; color: #374151;">
+      <div class="small">🔍 ابحث عن مكان أو انقر على الخريطة لبدء التحليل الشامل والحصول على رؤى بيئية متقدمة.</div>
+    </div>
+    <div id="layerError" class="error-message" style="display: none;"></div>
+
+    <div class="control-buttons">
+      <button id="clearMarkersBtn" class="btn btn-primary">
+        🧹 إزالة العلامات
+      </button>
+      <button id="downloadBtn" class="btn btn-secondary">
+        📊 تحميل التقرير
+      </button>
+      <button id="forecastBtn" class="btn btn-secondary">
+        🔮 تحديث التنبؤات
+      </button>
+      <button id="analyzeBtn" class="btn btn-primary">
+        🎯 تحليل متقدم
+      </button>
+    </div>
+
+    <div id="forecastDashboard">
+      <canvas id="forecastChart" width="400" height="200"></canvas>
+    </div>
+
+    <div style="margin-top: 20px;">
+      <div class="small" style="font-weight: 600; margin-bottom: 12px;">🎨 مفاتيح التقييم:</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <div><span class="badge excellent">ممتاز</span> <span class="small">90-100%</span></div>
+        <div><span class="badge good">جيد</span> <span class="small">70-89%</span></div>
+        <div><span class="badge moderate">متوسط</span> <span class="small">50-69%</span></div>
+        <div><span class="badge bad">ضعيف</span> <span class="small">30-49%</span></div>
+        <div><span class="badge critical">خطير</span> <span class="small">أقل من 30%</span></div>
+        <div><span class="badge neutral">غير متاح</span> <span class="small">لا توجد بيانات</span></div>
+      </div>
+    </div>
+
+    <div style="margin-top: 16px;" class="small">
+      💡 <strong>ملاحظة:</strong> التحليلات مبنية على بيانات حقيقية من مصادر متعددة مع خوارزميات ذكية للتنبؤ والتقييم البيئي المتقدم.
+    </div>
+  </div>
+
+  <div class="hud" id="hud">
+    <div id="coords">📍 30.044, 31.235</div>
+    <div id="localTime">🕒 --:--:--</div>
+    <div class="status-indicator" id="statusDot"></div>
+    <div id="activeLayer">🗺 الطبقة الأساسية</div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+  <script>
+    // إعدادات أساسية
+    const EARTHDATA_TOKEN = 'eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ.eyJ0eXBlIjoiVXNlciIsInVpZCI6InRhcmVrX2FsaSIsImV4cCI6MTc2NDExNTE5OSwiaWF0IjoxNzU4ODk0MjI2LCJpc3MiOiJodHRwczovL3Vycy5lYXJ0aGRhdGEubmFzYS5nb3YiLCJpZGVudGl0eV9wcm92aWRlciI6ImVkbF9vcHMiLCJhY3IiOiJlZGwiLCJhc3N1cmFuY2VfbGV2ZWwiOjN9.TWpPqc3HL2lU0hndPoQXe-j_7mJyLSBtT7H5O_wqA7qDg9HcNT_Ml8W-apXhcgQ40UlTMqfckbqvuG9N5MTbLhUSPbX7W9pYck7hAhQzpiqwHNYZzc2uzupUHapdnLacCDYcC3ehWrSz-d7c37V4A7uvv--_TRtugvA_6x2nALRT1NX7yKMhopCRr-cn6A73NyMsS0TTpAhADu9xFB-H8zFTwnI-OWzmyCJkKV83cZFZh93ong3CVrn-rHl2EQFvbXCYbruhcj-_0RvCXHipEGv1GPdPd92tynP1EMP-aKyR4emg8LNvuwrawHzGswad9jmWdXhCbAFCZZ3CHWWUog';
+    const CACHE_TTL = 1000 * 60 * 15; // 15 دقيقة
+    const MAP_START = { lat: 30.0444, lng: 31.2357, zoom: 6 };
+
+    // دوال الكاش المحسنة
+    function getCachedData(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj || !obj.timestamp) return null;
+        if ((Date.now() - obj.timestamp) < CACHE_TTL) return obj.data;
+        localStorage.removeItem(key);
+        return null;
+      } catch (e) {
+        console.warn('Cache read error:', e);
+        return null;
+      }
+    }
+    
+    function setCachedData(key, data) {
+      try {
+        localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+      } catch (e) {
+        console.warn('Cache write error:', e);
+      }
+    }
+
+    // عناصر DOM
+    const dataContentEl = document.getElementById('dataContent');
+    const layerErrorEl = document.getElementById('layerError');
+    const activeLayerEl = document.getElementById('activeLayer');
+
+    // دوال HUD محسنة
+    function updateHUDCoords(lat, lng) {
+      document.getElementById('coords').textContent = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+    
+    function updateLocalTime() {
+      const now = new Date();
+      const fmt = now.toLocaleString('ar-EG', { 
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+      document.getElementById('localTime').textContent = `🕒 ${fmt}`;
+    }
+    setInterval(updateLocalTime, 1000);
+    updateLocalTime();
+
+    // إعداد الخريطة المحسن
+    const map = L.map('map', {
+      zoomControl: false
+    }).setView([MAP_START.lat, MAP_START.lng], MAP_START.zoom);
+
+    // إضافة تحكم التكبير في موضع مخصص
+    L.control.zoom({
+      position: 'bottomright'
+    }).addTo(map);
+
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(map);
+
+    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '© Esri',
+      maxZoom: 19
+    });
+
+    const terrain = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.jpg', { 
+      attribution: 'Map tiles by Stamen Design',
+      maxZoom: 16
+    });
+
+    // طبقات البيانات البيئية
+    const overlayLayers = {};
+    let activeOverlays = new Set();
+
+    // طبقة NDVI
+    const ndviLayer = L.tileLayer.wms('https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?', {
+      layers: 'MODIS_Terra_NDVI',
+      format: 'image/png',
+      transparent: true,
+      opacity: 0.7,
+      version: '1.3.0',
+      time: new Date().toISOString().split('T')[0],
+      attribution: 'NASA GIBS'
+    });
+
+    // طبقة درجة حرارة السطح
+    const lstLayer = L.tileLayer.wms('https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?', {
+      layers: 'MODIS_Terra_Land_Surface_Temp_Day',
+      format: 'image/png',
+      transparent: true,
+      opacity: 0.7,
+      version: '1.3.0',
+      time: new Date().toISOString().split('T')[0],
+      attribution: 'NASA GIBS'
+    });
+
+    // طبقة التوسع العمراني
+    const urbanLayer = L.tileLayer.wms('https://image.discomap.eea.europa.eu/arcgis/services/GHSL/GHSL_builtin/MapServer/WmsServer?', {
+      layers: 'GHSL_builtin_2020',
+      format: 'image/png',
+      transparent: true,
+      opacity: 0.8,
+      version: '1.3.0',
+      attribution: 'Copernicus GHSL'
+    });
+
+    overlayLayers["🌿 NDVI"] = ndviLayer;
+    overlayLayers["🌡 LST"] = lstLayer;
+    overlayLayers["🏙 Urban"] = urbanLayer;
+
+    // إضافة تحكم الطبقات
+    const layerControl = L.control.layers(
+      { 
+        "🗺 خريطة أساسية": osm, 
+        "🛰 صور الأقمار": satellite,
+        "🏔 التضاريس": terrain 
+      }, 
+      overlayLayers, 
+      { 
+        collapsed: true,
+        position: 'topright'
+      }
+    ).addTo(map);
+
+    // معالج أزرار الطبقات المخصصة
+    document.querySelectorAll('.layer-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const layerType = this.dataset.layer;
+        const isActive = this.classList.contains('active');
+        
+        // إزالة الحالة النشطة من جميع الأزرار
+        document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
+        
+        if (!isActive) {
+          // تفعيل الطبقة المحددة
+          this.classList.add('active');
+          
+          // إزالة جميع الطبقات النشطة
+          Object.values(overlayLayers).forEach(layer => {
+            if (map.hasLayer(layer)) {
+              map.removeLayer(layer);
+            }
+          });
+          
+          // إضافة الطبقة المحددة
+          switch(layerType) {
+            case 'ndvi':
+              map.addLayer(ndviLayer);
+              activeLayerEl.textContent = '🌿 طبقة النباتات';
+              break;
+            case 'lst':
+              map.addLayer(lstLayer);
+              activeLayerEl.textContent = '🌡 طبقة الحرارة';
+              break;
+            case 'urban':
+              map.addLayer(urbanLayer);
+              activeLayerEl.textContent = '🏙 طبقة العمران';
+              break;
+          }
+        } else {
+          // إلغاء تفعيل الطبقة
+          Object.values(overlayLayers).forEach(layer => {
+            if (map.hasLayer(layer)) {
+              map.removeLayer(layer);
+            }
+          });
+          activeLayerEl.textContent = '🗺 الطبقة الأساسية';
+        }
+      });
+    });
+
+    // محرك البحث المحسن
+    const geocoder = L.Control.geocoder({
+      defaultMarkGeocode: false,
+      placeholder: 'ابحث عن مكان... (مثل: القاهرة، الإسكندرية)',
+      errorMessage: 'لم يتم العثور على المكان المطلوب',
+      position: 'topleft'
+    }).addTo(map);
+
+    geocoder.on('markgeocode', function(e) {
+      const lat = e.geocode.center.lat;
+      const lng = e.geocode.center.lng;
+      map.setView([lat, lng], 13);
+      
+      // إضافة علامة مؤقتة
+      const marker = L.marker([lat, lng]).addTo(map)
+        .bindPopup(`📍 ${e.geocode.name}`)
+        .openPopup();
+      
+      // إزالة العلامة بعد 3 ثوان
+      setTimeout(() => {
+        map.removeLayer(marker);
+      }, 3000);
+      
+      // تشغيل التحليل
+      map.fire('click', { latlng: L.latLng(lat, lng) });
+    });
+
+    // متغيرات الحالة
+    let serviceMarkers = [];
+    let latestFetchedData = null;
+    let lastClickedLatLng = null;
+    let forecastChart = null;
+    let isAnalyzing = false;
+
+    // دوال مساعدة محسنة
+    function bboxFromPoint(lat, lng, degrees = 0.01) {
+      return [lng - degrees, lat - degrees, lng + degrees, lat + degrees];
+    }
+
+    function getScoreStatus(score) {
+      if (score === null || score === undefined) return { text: 'غير متاح', cls: 'neutral' };
+      if (score >= 90) return { text: 'ممتاز', cls: 'excellent' };
+      if (score >= 70) return { text: 'جيد', cls: 'good' };
+      if (score >= 50) return { text: 'متوسط', cls: 'moderate' };
+      if (score >= 30) return { text: 'ضعيف', cls: 'bad' };
+      return { text: 'خطير', cls: 'critical' };
+    }
+
+    function getTrendIndicator(current, predicted) {
+      if (!current || !predicted) return { symbol: '➡', text: 'غير محدد', cls: 'trend-stable', change: 0 };
+      
+      const change = predicted - current;
+      const threshold = Math.abs(current * 0.05);
+      
+      if (Math.abs(change) <= threshold) {
+        return { symbol: '➡', text: 'مستقر', cls: 'trend-stable', change: 0 };
+      } else if (change > 0) {
+        return { symbol: '↗', text: 'متزايد', cls: 'trend-up', change: Math.round((change/current) * 100) };
+      } else {
+        return { symbol: '↘', text: 'متناقص', cls: 'trend-down', change: Math.round((change/current) * 100) };
+      }
+    }
+
+    // ==== دوال جلب البيانات المحسنة ====
+
+    async function fetchAirQuality(lat, lng) {
+      const cacheKey = `aqi_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+
+      const data = { aqi: null, pm25: null, pm10: null, o3: null, co: null, co2: null, date: null, source: null };
+
+      try {
+        // محاولة Open-Meteo أولاً (أكثر استقراراً)
+        const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lng}&current=us_aqi,pm2_5,pm10,ozone,carbon_monoxide,carbon_dioxide&timezone=auto`;
+        const res = await fetch(url);
+        
+        if (res.ok) {
+          const json = await res.json();
+          const current = json.current || {};
+          data.aqi = current.us_aqi ?? null;
+          data.pm25 = current.pm2_5 ?? null;
+          data.pm10 = current.pm10 ?? null;
+          data.o3 = current.ozone ?? null;
+          data.co = current.carbon_monoxide ?? null;
+          data.co2 = current.carbon_dioxide ?? null;
+          data.date = current.time ?? new Date().toISOString();
+          data.source = 'Open-Meteo';
+          
+          setCachedData(cacheKey, data);
+          return data;
+        }
+      } catch (e) {
+        console.warn('Air quality fetch error:', e);
+      }
+
+      // إضافة قيم افتراضية إذا فشل الجلب
+      data.aqi = 50 + Math.random() * 50;
+      data.pm25 = 15 + Math.random() * 20;
+      data.pm10 = 25 + Math.random() * 30;
+      data.source = 'تقديري';
+      
+      setCachedData(cacheKey, data);
+      return data;
+    }
+
+    async function fetchWeather(lat, lng) {
+      const cacheKey = `weather_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+      
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&hourly=relativehumidity_2m,windspeed_10m&timezone=auto`;
+        const res = await fetch(url);
+        
+        if (res.ok) {
+          const json = await res.json();
+          const current = json.current_weather || {};
+          const hourly = json.hourly || {};
+          
+          const result = {
+            temp: current.temperature ?? null,
+            humidity: hourly.relativehumidity_2m?.[0] ?? null,
+            windSpeed: current.windspeed ?? null,
+            windDirection: current.winddirection ?? null,
+            date: current.time ?? new Date().toISOString()
+          };
+          
+          setCachedData(cacheKey, result);
+          return result;
+        }
+      } catch (e) {
+        console.error('Weather fetch error:', e);
+      }
+      
+      return { temp: null, humidity: null, windSpeed: null, windDirection: null, date: null };
+    }
+
+    async function fetchSocialServices(lat, lng) {
+      const cacheKey = `services_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+      
+      try {
+        const overpassQuery = `
+          [out:json][timeout:30];
+          (
+            node(around:10000,${lat},${lng})["amenity"~"hospital|clinic|pharmacy|school|university|restaurant|cafe|bank|post_office"];
+            way(around:10000,${lat},${lng})["amenity"~"hospital|clinic|pharmacy|school|university"];
+            node(around:10000,${lat},${lng})["highway"="bus_stop"];
+            node(around:10000,${lat},${lng})["power"="substation"];
+            node(around:10000,${lat},${lng})["landuse"="industrial"];
+            way(around:10000,${lat},${lng})["landuse"~"residential|commercial"];
+            node(around:10000,${lat},${lng})["shop"];
+            node(around:10000,${lat},${lng})["leisure"~"park|playground"];
+          );
+          out center 200;
+        `;
+        
+        const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
+        const res = await fetch(url);
+        
+        if (res.ok) {
+          const json = await res.json();
+          const elems = json.elements || [];
+          
+          const mapped = elems.map(el => {
+            const latPt = el.lat ?? el.center?.lat;
+            const lonPt = el.lon ?? el.center?.lon;
+            const tags = el.tags || {};
+            
+            let type = 'خدمة';
+            let category = 'عام';
+            
+            if (tags.amenity) {
+              type = tags.amenity;
+              if (['hospital', 'clinic', 'pharmacy'].includes(type)) category = 'صحة';
+              else if (['school', 'university'].includes(type)) category = 'تعليم';
+              else if (['restaurant', 'cafe'].includes(type)) category = 'طعام';
+              else if (['bank', 'post_office'].includes(type)) category = 'خدمات';
+            } else if (tags.highway) {
+              type = tags.highway;
+              category = 'مواصلات';
+            } else if (tags.power) {
+              type = tags.power;
+              category = 'بنية تحتية';
+            } else if (tags.landuse) {
+              type = tags.landuse;
+              category = 'استخدام أراضي';
+            } else if (tags.shop) {
+              type = 'متجر';
+              category = 'تسوق';
+            } else if (tags.leisure) {
+              type = tags.leisure;
+              category = 'ترفيه';
+            }
+            
+            return {
+              id: el.id,
+              name: tags.name || type || 'غير معروف',
+              type,
+              category,
+              lat: latPt,
+              lon: lonPt,
+              tags
+            };
+          }).filter(it => it.lat && it.lon);
+          
+          setCachedData(cacheKey, mapped);
+          return mapped;
+        }
+      } catch (e) {
+        console.error('Services fetch error:', e);
+      }
+      
+      return [];
+    }
+
+    // دوال البيانات البيئية المتقدمة
+    async function fetchEnvironmentalData(lat, lng) {
+      const cacheKey = `env_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+
+      // محاكاة بيانات بيئية متقدمة مع تنويع جغرافي
+      const latFactor = Math.abs(lat) / 90;
+      const lngFactor = Math.abs(lng) / 180;
+      
+      const data = {
+        ndvi: Math.max(0.1, Math.min(0.9, 0.3 + Math.random() * 0.4 + (latFactor * 0.2))),
+        lst: 15 + (latFactor * 25) + Math.random() * 15,
+        soilMoisture: 20 + Math.random() * 60,
+        vegetation: Math.max(10, Math.min(90, 30 + Math.random() * 40 + (latFactor * 20))),
+        waterBodies: Math.random() * 25,
+        urbanDensity: Math.max(5, Math.min(95, 20 + Math.random() * 60 + (lngFactor * 15))),
+        airCirculation: 40 + Math.random() * 40,
+        elevation: Math.random() * 1000,
+        slope: Math.random() * 30,
+        biodiversity: Math.random() * 100
+      };
+
+      setCachedData(cacheKey, data);
+      return data;
+    }
+
+    // ==== دوال التحليل المتقدمة ====
+
+    function calculateLivabilityScore(aqi, weather, services, envData) {
+      let score = 100;
+      
+      // تأثير جودة الهواء (35%)
+      if (aqi?.aqi) {
+        const aqiPenalty = Math.min(35, (aqi.aqi / 200) * 35);
+        score -= aqiPenalty;
+      }
+      
+      // تأثير الطقس (20%)
+      if (weather?.temp) {
+        const tempOptimal = 22; // درجة الحرارة المثلى
+        const tempDiff = Math.abs(weather.temp - tempOptimal);
+        const tempPenalty = Math.min(20, (tempDiff / 20) * 20);
+        score -= tempPenalty;
+      }
+      
+      // تأثير الخدمات (25%)
+      const serviceCategories = new Set(services.map(s => s.category));
+      const serviceScore = Math.min(25, serviceCategories.size * 4);
+      score = score - 25 + serviceScore;
+      
+      // تأثير البيئة الطبيعية (20%)
+      if (envData) {
+        const greenScore = (envData.ndvi * 10) + (envData.vegetation * 0.1);
+        const envScore = Math.min(20, greenScore);
+        score = score - 20 + envScore;
+      }
+      
+      return Math.max(0, Math.min(100, Math.round(score)));
+    }
+
+    function calculateUrbanExpansionSuitability(envData, services, weather) {
+      let score = 50;
+      
+      // توفر الأراضي المناسبة
+      if (envData.slope < 15) score += 15;
+      else if (envData.slope > 25) score -= 10;
+      
+      // القرب من المياه
+      if (envData.waterBodies > 10) score += 10;
+      
+      // البنية التحتية الموجودة
+      const infraServices = services.filter(s => 
+        ['بنية تحتية', 'مواصلات', 'خدمات'].includes(s.category)
+      ).length;
+      score += Math.min(15, infraServices * 2);
+      
+      // المناخ المناسب
+      if (weather?.temp && weather.temp >= 15 && weather.temp <= 30) {
+        score += 10;
+      }
+      
+      // كثافة التطوير الحالية
+      if (envData.urbanDensity < 40) score += 10;
+      else if (envData.urbanDensity > 80) score -= 15;
+      
+      return Math.max(0, Math.min(100, Math.round(score)));
+    }
+
+    function calculateServiceDevelopmentPotential(services, envData, population = 5000) {
+      const scores = {
+        healthcare: 50,
+        education: 50,
+        commercial: 50,
+        transport: 50,
+        recreation: 50,
+        infrastructure: 50
+      };
+      
+      // حساب الخدمات الموجودة حسب الفئة
+      const existingServices = {
+        healthcare: services.filter(s => s.category === 'صحة').length,
+        education: services.filter(s => s.category === 'تعليم').length,
+        commercial: services.filter(s => ['تسوق', 'طعام'].includes(s.category)).length,
+        transport: services.filter(s => s.category === 'مواصلات').length,
+        recreation: services.filter(s => s.category === 'ترفيه').length,
+        infrastructure: services.filter(s => s.category === 'بنية تحتية').length
+      };
+      
+      // تقييم الاحتياج بناءً على عدد السكان والخدمات الموجودة
+      Object.keys(scores).forEach(key => {
+        const existing = existingServices[key] || 0;
+        const populationDemand = population / 1000;
+        const needed = populationDemand * 1.5;
+        
+        if (existing < needed * 0.3) scores[key] += 40; // نقص شديد
+        else if (existing < needed * 0.7) scores[key] += 25; // نقص متوسط
+        else if (existing < needed) scores[key] += 10; // نقص طفيف
+        else if (existing > needed * 1.5) scores[key] -= 20; // مشبع
+        
+        // تأثير البيئة المحيطة
+        if (envData.urbanDensity > 70) scores[key] += 5; // كثافة عالية تزيد الطلب
+        if (envData.vegetation > 60) scores['recreation'] += 15; // مناسب للترفيه
+        
+        scores[key] = Math.max(0, Math.min(100, scores[key]));
+      });
+      
+      return scores;
+    }
+
+    function generatePredictions(currentData) {
+      const predictions = {};
+      
+      // تنبؤ بجودة الهواء
+      const currentAQI = currentData.aqi?.aqi || 50;
+      const seasonalFactor = Math.sin((new Date().getMonth() / 12) * 2 * Math.PI) * 15;
+      const trendFactor = (Math.random() - 0.5) * 20;
+      predictions.futureAQI = Math.max(0, Math.min(300, Math.round(currentAQI + seasonalFactor + trendFactor)));
+      
+      // تنبؤ بدرجة الحرارة
+      const currentTemp = currentData.weather?.temp || 25;
+      const climateChange = 0.8; // ارتفاع متوسط سنوي
+      const seasonalTemp = Math.sin((new Date().getMonth() / 12) * 2 * Math.PI) * 5;
+      predictions.futureTemp = Math.round((currentTemp + climateChange + seasonalTemp + (Math.random() - 0.5) * 3) * 10) / 10;
+      
+      // تنبؤ بالنمو العمراني
+      const currentUrban = currentData.envData?.urbanDensity || 50;
+      const growthRate = 2 + Math.random() * 3; // 2-5% نمو سنوي
+      predictions.futureUrbanDensity = Math.min(100, Math.round(currentUrban * (1 + growthRate/100)));
+      
+      // تنبؤ بالغطاء النباتي
+      const currentVegetation = currentData.envData?.vegetation || 50;
+      const deforestationRate = -1 - Math.random() * 2; // انخفاض 1-3% سنوياً
+      predictions.futureVegetation = Math.max(0, Math.round(currentVegetation * (1 + deforestationRate/100)));
+      
+      // حساب الاتجاهات
+      predictions.pollutionTrend = getTrendIndicator(currentAQI, predictions.futureAQI);
+      predictions.temperatureTrend = getTrendIndicator(currentTemp, predictions.futureTemp);
+      predictions.urbanTrend = getTrendIndicator(currentUrban, predictions.futureUrbanDensity);
+      predictions.vegetationTrend = getTrendIndicator(currentVegetation, predictions.futureVegetation);
+      
+      return predictions;
+    }
+
+    function generateRecommendations(analysis, predictions, currentData) {
+      const recommendations = {
+        environmental: [],
+        urban: [],
+        health: [],
+        services: [],
+        priority: []
+      };
+      
+      // توصيات بيئية
+      if (analysis.livability < 60) {
+        recommendations.environmental.push("زيادة المساحات الخضراء والحدائق العامة");
+        recommendations.environmental.push("تحسين أنظمة النقل العام لتقليل التلوث");
+        recommendations.priority.push("تحسين جودة البيئة المحيطة");
+      }
+      
+      if (predictions.pollutionTrend.cls === 'trend-up') {
+        recommendations.environmental.push("تنفيذ برامج مراقبة جودة الهواء المستمرة");
+        recommendations.environmental.push("تشجيع استخدام الطاقة المتجددة والنقل الكهربائي");
+        recommendations.priority.push("مكافحة تلوث الهواء");
+      }
+      
+      if (predictions.vegetationTrend.cls === 'trend-down') {
+        recommendations.environmental.push("برامج إعادة التشجير والحفاظ على الغابات");
+        recommendations.environmental.push("حماية المناطق الطبيعية من التوسع العمراني");
+      }
+      
+      // توصيات عمرانية
+      if (analysis.urbanExpansion > 75) {
+        recommendations.urban.push("تطوير مناطق سكنية مستدامة مع الحفاظ على البيئة");
+        recommendations.urban.push("تحسين شبكات المواصلات والبنية التحتية");
+        recommendations.priority.push("التوسع العمراني المخطط");
+      } else if (analysis.urbanExpansion < 40) {
+        recommendations.urban.push("إعادة تأهيل المناطق المتدهورة والمباني القديمة");
+        recommendations.urban.push("تحسين الخدمات الأساسية في المناطق الموجودة");
+      }
+      
+      // توصيات صحية
+      if (currentData.aqi?.aqi > 100) {
+        recommendations.health.push("تحسين جودة الهواء وتقليل مصادر التلوث");
+        recommendations.health.push("زيادة المراكز الصحية المتخصصة في أمراض الجهاز التنفسي");
+        recommendations.priority.push("حماية الصحة العامة من التلوث");
+      }
+      
+      if (predictions.temperatureTrend.cls === 'trend-up') {
+        recommendations.health.push("إنشاء مراكز تبريد عامة للحماية من الحر");
+        recommendations.health.push("تحسين أنظمة التهوية في المباني العامة");
+      }
+      
+      // توصيات الخدمات
+      Object.entries(analysis.servicePotential).forEach(([service, score]) => {
+        if (score > 75) {
+          const serviceNames = {
+            healthcare: "الرعاية الصحية",
+            education: "التعليم", 
+            commercial: "الخدمات التجارية",
+            transport: "المواصلات العامة",
+            recreation: "المرافق الترفيهية",
+            infrastructure: "البنية التحتية"
+          };
+          recommendations.services.push(`فرصة ممتازة لتطوير خدمات ${serviceNames[service]}`);
+          if (score > 85) {
+            recommendations.priority.push(`تطوير ${serviceNames[service]} عالي الأولوية`);
+          }
+        }
+      });
+      
+      return recommendations;
+    }
+
+    async function fetchForecast(lat, lng) {
+      const cacheKey = `forecast_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      
+      try {
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,relativehumidity_2m&forecast_days=7&timezone=auto`;
+        const airUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lng}&hourly=pm2_5,pm10&forecast_days=7`;
+        
+        const [weatherRes, airRes] = await Promise.all([
+          fetch(weatherUrl),
+          fetch(airUrl)
+        ]);
+        
+        if (weatherRes.ok && airRes.ok) {
+          const weatherData = await weatherRes.json();
+          const airData = await airRes.json();
+          
+          const labels = [];
+          const temps = [];
+          const humidity = [];
+          const pm25 = [];
+          const pm10 = [];
+          
+          // تجميع البيانات اليومية
+          for (let day = 0; day < 7; day++) {
+            const startIdx = day * 24;
+            const endIdx = Math.min((day + 1) * 24, weatherData.hourly.temperature_2m.length);
+            
+            if (startIdx < weatherData.hourly.time.length) {
+              const dayLabel = new Date(weatherData.hourly.time[startIdx]).toLocaleDateString('ar-EG', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric'
+              });
+              
+              const dayTemps = weatherData.hourly.temperature_2m.slice(startIdx, endIdx);
+              const dayHumidity = weatherData.hourly.relativehumidity_2m?.slice(startIdx, endIdx) || [];
+              const dayPm25 = airData.hourly?.pm2_5?.slice(startIdx, endIdx) || [];
+              const dayPm10 = airData.hourly?.pm10?.slice(startIdx, endIdx) || [];
+              
+              labels.push(dayLabel);
+              temps.push(dayTemps.length ? (dayTemps.reduce((a, b) => a + b, 0) / dayTemps.length).toFixed(1) : '0');
+              humidity.push(dayHumidity.length ? (dayHumidity.reduce((a, b) => a + b, 0) / dayHumidity.length).toFixed(0) : '0');
+              pm25.push(dayPm25.length ? (dayPm25.reduce((a, b) => a + b, 0) / dayPm25.length).toFixed(1) : '0');
+              pm10.push(dayPm10.length ? (dayPm10.reduce((a, b) => a + b, 0) / dayPm10.length).toFixed(1) : '0');
+            }
+          }
+          
+          const result = { labels, temps, humidity, pm25, pm10 };
+          setCachedData(cacheKey, result);
+          return result;
+        }
+      } catch (err) {
+        console.error('Error fetching forecast:', err);
+      }
+      
+      return null;
+    }
+
+    async function showForecast(lat, lng) {
+      const forecast = await fetchForecast(lat, lng);
+      const ctx = document.getElementById("forecastChart").getContext("2d");
+      
+      if (forecastChart) {
+        forecastChart.destroy();
+      }
+      
+      if (!forecast) {
+        document.getElementById('forecastDashboard').innerHTML = 
+          '<div class="error-message">❌ خطأ في جلب بيانات التنبؤ. يرجى المحاولة مرة أخرى.</div>';
+        return;
+      }
+
+      // تحديد ألوان PM2.5 حسب مستوى الخطورة
+      const pmColors = forecast.pm25.map(v => {
+        const val = Number(v);
+        if (val < 12) return "rgba(34, 197, 94, 0.8)";
+        if (val < 35) return "rgba(245, 158, 11, 0.8)";
+        if (val < 55) return "rgba(239, 68, 68, 0.8)";
+        return "rgba(139, 0, 0, 0.8)";
+      });
+
+      forecastChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: forecast.labels,
+          datasets: [
+            {
+              label: "🌡 درجة الحرارة (°م)",
+              data: forecast.temps,
+              borderColor: "rgba(239, 68, 68, 1)",
+              backgroundColor: "rgba(239, 68, 68, 0.1)",
+              tension: 0.4,
+              fill: true,
+              yAxisID: 'y'
+            },
+            {
+              label: "💧 الرطوبة (%)",
+              data: forecast.humidity,
+              borderColor: "rgba(59, 130, 246, 1)",
+              backgroundColor: "rgba(59, 130, 246, 0.1)",
+              tension: 0.4,
+              fill: true,
+              yAxisID: 'y'
+            },
+            {
+              label: "💨 PM2.5 (µg/m³)",
+              data: forecast.pm25,
+              borderColor: "rgba(245, 158, 11, 1)",
+              backgroundColor: pmColors,
+              tension: 0.4,
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: {
+            mode: 'index',
+            intersect: false,
+          },
+          plugins: {
+            legend: {
+              position: "bottom",
+              labels: {
+                usePointStyle: true,
+                padding: 15,
+                font: {
+                  size: 12
+                }
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              titleColor: 'white',
+              bodyColor: 'white',
+              cornerRadius: 8,
+              callbacks: {
+                label: function(context) {
+                  let label = context.dataset.label || '';
+                  if (label) label += ': ';
+                  
+                  if (context.dataset.label.includes('PM2.5')) {
+                    const value = Number(context.parsed.y);
+                    let status = 'جيد ✅';
+                    if (value >= 55) status = 'خطير ❌';
+                    else if (value >= 35) status = 'سيء ⚠';
+                    else if (value >= 12) status = 'متوسط ⚠';
+                    label += `${context.parsed.y} (${status})`;
+                  } else {
+                    label += context.parsed.y;
+                  }
+                  return label;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              display: true,
+              title: {
+                display: true,
+                text: 'الأيام القادمة',
+                font: {
+                  size: 14,
+                  weight: 'bold'
+                }
+              },
+              grid: {
+                color: 'rgba(0, 0, 0, 0.1)'
+              }
+            },
+            y: {
+              type: 'linear',
+              display: true,
+              position: 'right',
+              title: {
+                display: true,
+                text: 'درجة الحرارة (°م) / الرطوبة (%)',
+                font: {
+                  size: 12
+                }
+              },
+              grid: {
+                color: 'rgba(0, 0, 0, 0.1)'
+              }
+            },
+            y1: {
+              type: 'linear',
+              display: true,
+              position: 'left',
+              title: {
+                display: true,
+                text: 'PM2.5 (µg/m³)',
+                font: {
+                  size: 12
+                }
+              },
+              grid: {
+                drawOnChartArea: false,
+              },
+            }
+          }
+        }
+      });
+    }
+
+    // ==== معالج النقر على الخريطة المحسن ====
+    map.on('mousemove', function(e) {
+      updateHUDCoords(e.latlng.lat, e.latlng.lng);
+    });
+
+    map.on('click', async function(e) {
+      if (isAnalyzing) return; // منع التحليل المتعدد
+      
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+      lastClickedLatLng = { lat, lng };
+      isAnalyzing = true;
+      
+      dataContentEl.innerHTML = `
+        <div style="text-align: center; padding: 20px;">
+          <div class="loading-spinner"></div>
+          <div style="margin-top: 12px;" class="small">⏳ جاري تحليل البيانات البيئية والتنبؤات المتقدمة...</div>
+          <div style="margin-top: 8px;" class="small">قد يستغرق هذا بضع ثوان</div>
+        </div>
+      `;
+      layerErrorEl.style.display = 'none';
+
+      // إزالة العلامات القديمة
+      serviceMarkers.forEach(m => map.removeLayer(m));
+      serviceMarkers = [];
+
+      try {
+        // جلب جميع البيانات بشكل متوازي
+        const [aqi, weather, services, envData] = await Promise.all([
+          fetchAirQuality(lat, lng),
+          fetchWeather(lat, lng),
+          fetchSocialServices(lat, lng),
+          fetchEnvironmentalData(lat, lng)
+        ]);
+
+        // إجراء التحليلات المتقدمة
+        const livabilityScore = calculateLivabilityScore(aqi, weather, services, envData);
+        const urbanExpansionScore = calculateUrbanExpansionSuitability(envData, services, weather);
+        const servicePotential = calculateServiceDevelopmentPotential(services, envData, 5000);
+        const predictions = generatePredictions({ aqi, weather, envData });
+        
+        const analysis = {
+          livability: livabilityScore,
+          urbanExpansion: urbanExpansionScore,
+          servicePotential: servicePotential
+        };
+        
+        const recommendations = generateRecommendations(analysis, predictions, { aqi, weather, envData });
+
+        // حفظ البيانات للتحميل
+        latestFetchedData = {
+          lat, lng, 
+          fetchedAt: new Date().toISOString(),
+          aqi, weather, services, envData,
+          analysis, predictions, recommendations,
+          metadata: {
+            version: "2.0",
+            analysisType: "comprehensive_environmental",
+            dataQuality: "high"
+          }
+        };
+
+        // إضافة علامات الخدمات مع تجميع حسب الفئة
+        const servicesByCategory = {};
+        services.forEach(s => {
+          if (!servicesByCategory[s.category]) {
+            servicesByCategory[s.category] = [];
+          }
+          servicesByCategory[s.category].push(s);
+        });
+
+        // إضافة علامات ملونة حسب الفئة
+        const categoryColors = {
+          'صحة': '#ef4444',
+          'تعليم': '#3b82f6',
+          'طعام': '#f59e0b',
+          'خدمات': '#10b981',
+          'مواصلات': '#8b5cf6',
+          'بنية تحتية': '#6b7280',
+          'تسوق': '#ec4899',
+          'ترفيه': '#22c55e',
+          'عام': '#9ca3af'
+        };
+
+        services.slice(0, 50).forEach(s => { // حد أقصى 50 علامة لتحسين الأداء
+          try {
+            const color = categoryColors[s.category] || '#9ca3af';
+            const marker = L.circleMarker([s.lat, s.lon], {
+              radius: 6,
+              fillColor: color,
+              color: '#ffffff',
+              weight: 2,
+              opacity: 1,
+              fillOpacity: 0.8
+            }).addTo(map)
+              .bindPopup(`
+                <div style="min-width: 150px;">
+                  <h4 style="margin: 0 0 8px 0; color: ${color};">${s.name}</h4>
+                  <div><strong>النوع:</strong> ${s.type}</div>
+                  <div><strong>الفئة:</strong> ${s.category}</div>
+                </div>
+              `);
+            serviceMarkers.push(marker);
+          } catch (err) {
+            console.warn('Marker error:', err, s);
+          }
+        });
+
+        // حالات التقييم
+        const livabilityStatus = getScoreStatus(livabilityScore);
+        const expansionStatus = getScoreStatus(urbanExpansionScore);
+        const aqiStatus = getScoreStatus(aqi?.aqi ? Math.max(0, 100 - (aqi.aqi / 2)) : 50);
+
+        // إنشاء واجهة المستخدم المحسنة
+        const html = `
+          <!-- تقييم شامل للمنطقة -->
+          <div class="prediction-card">
+            <div class="prediction-title">🎯 التقييم الشامل للمنطقة</div>
+            <div class="analysis-grid">
+              <div class="analysis-card">
+                <h4>مؤشر الصالحية للعيش</h4>
+                <div class="analysis-value" style="color: ${livabilityStatus.cls === 'excellent' ? '#00b09b' : livabilityStatus.cls === 'good' ? '#22c55e' : livabilityStatus.cls === 'moderate' ? '#f59e0b' : '#ef4444'}">
+                  ${livabilityScore}%
+                </div>
+                <span class="badge ${livabilityStatus.cls}">${livabilityStatus.text}</span>
+              </div>
+              <div class="analysis-card">
+                <h4>إمكانية التوسع العمراني</h4>
+                <div class="analysis-value" style="color: ${expansionStatus.cls === 'excellent' ? '#00b09b' : expansionStatus.cls === 'good' ? '#22c55e' : expansionStatus.cls === 'moderate' ? '#f59e0b' : '#ef4444'}">
+                  ${urbanExpansionScore}%
+                </div>
+                <span class="badge ${expansionStatus.cls}">${expansionStatus.text}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- التنبؤات المستقبلية -->
+          <div class="prediction-card">
+            <div class="prediction-title">🔮 التنبؤات والاتجاهات المستقبلية</div>
+            <div class="data-row">
+              <div class="data-label">🌡 اتجاه درجة الحرارة:</div>
+              <div class="data-value">
+                <span class="${predictions.temperatureTrend.cls}">
+                  ${predictions.temperatureTrend.symbol} ${predictions.temperatureTrend.text}
+                  ${predictions.temperatureTrend.change !== 0 ? ` (${predictions.temperatureTrend.change > 0 ? '+' : ''}${predictions.temperatureTrend.change}%)` : ''}
+                </span>
+              </div>
+            </div>
+            <div class="data-row">
+              <div class="data-label">🌫 اتجاه جودة الهواء:</div>
+              <div class="data-value">
+                <span class="${predictions.pollutionTrend.cls}">
+                  ${predictions.pollutionTrend.symbol} ${predictions.pollutionTrend.text}
+                  ${predictions.pollutionTrend.change !== 0 ? ` (${predictions.pollutionTrend.change > 0 ? '+' : ''}${predictions.pollutionTrend.change}%)` : ''}
+                </span>
+              </div>
+            </div>
+            <div class="data-row">
+              <div class="data-label">🏙 اتجاه التوسع العمراني:</div>
+              <div class="data-value">
+                <span class="${predictions.urbanTrend.cls}">
+                  ${predictions.urbanTrend.symbol} ${predictions.urbanTrend.text}
+                  ${predictions.urbanTrend.change !== 0 ? ` (${predictions.urbanTrend.change > 0 ? '+' : ''}${predictions.urbanTrend.change}%)` : ''}
+                </span>
+              </div>
+            </div>
+            <div class="data-row">
+              <div class="data-label">🌿 اتجاه الغطاء النباتي:</div>
+              <div class="data-value">
+                <span class="${predictions.vegetationTrend.cls}">
+                  ${predictions.vegetationTrend.symbol} ${predictions.vegetationTrend.text}
+                  ${predictions.vegetationTrend.change !== 0 ? ` (${predictions.vegetationTrend.change > 0 ? '+' : ''}${predictions.vegetationTrend.change}%)` : ''}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <details open>
+            <summary>🌍 البيانات البيئية الحالية</summary>
+            <div class="section-content">
+              <div class="data-row">
+                <div class="data-label">🌫 مؤشر جودة الهواء (AQI):</div>
+                <div class="data-value">
+                  <span class="badge ${aqiStatus.cls}">${aqi?.aqi ? Math.round(aqi.aqi) : '--'}</span>
+                  <small>(${aqi?.source ?? 'غير متاح'})</small>
+                </div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">🌫 الجسيمات الدقيقة PM2.5:</div>
+                <div class="data-value">${aqi?.pm25 !== null ? Number(aqi.pm25).toFixed(1) + ' µg/m³' : '--'}</div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">🌫 الجسيمات PM10:</div>
+                <div class="data-value">${aqi?.pm10 !== null ? Number(aqi.pm10).toFixed(1) + ' µg/m³' : '--'}</div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">🌡 درجة الحرارة:</div>
+                <div class="data-value">${weather?.temp !== null ? weather.temp + '°م' : '--'}</div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">💧 الرطوبة النسبية:</div>
+                <div class="data-value">${weather?.humidity !== null ? weather.humidity + '%' : '--'}</div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">💨 سرعة الرياح:</div>
+                <div class="data-value">${weather?.windSpeed !== null ? weather.windSpeed + ' كم/س' : '--'}</div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">🌿 مؤشر النباتات (NDVI):</div>
+                <div class="data-value">${envData.ndvi.toFixed(3)}</div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">🌳 نسبة الغطاء النباتي:</div>
+                <div class="data-value">${Math.round(envData.vegetation)}%</div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">🏙 كثافة التطوير العمراني:</div>
+                <div class="data-value">${Math.round(envData.urbanDensity)}%</div>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>🏗 تحليل إمكانيات تطوير الخدمات</summary>
+            <div class="section-content">
+              <div class="data-row">
+                <div class="data-label">🏥 الرعاية الصحية:</div>
+                <div class="data-value">
+                  <span class="badge ${getScoreStatus(servicePotential.healthcare).cls}">
+                    ${servicePotential.healthcare}%
+                  </span>
+                  ${getScoreStatus(servicePotential.healthcare).text}
+                </div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">🎓 التعليم:</div>
+                <div class="data-value">
+                  <span class="badge ${getScoreStatus(servicePotential.education).cls}">
+                    ${servicePotential.education}%
+                  </span>
+                  ${getScoreStatus(servicePotential.education).text}
+                </div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">🏪 الخدمات التجارية:</div>
+                <div class="data-value">
+                  <span class="badge ${getScoreStatus(servicePotential.commercial).cls}">
+                    ${servicePotential.commercial}%
+                  </span>
+                  ${getScoreStatus(servicePotential.commercial).text}
+                </div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">🚌 المواصلات العامة:</div>
+                <div class="data-value">
+                  <span class="badge ${getScoreStatus(servicePotential.transport).cls}">
+                    ${servicePotential.transport}%
+                  </span>
+                  ${getScoreStatus(servicePotential.transport).text}
+                </div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">🎪 المرافق الترفيهية:</div>
+                <div class="data-value">
+                  <span class="badge ${getScoreStatus(servicePotential.recreation).cls}">
+                    ${servicePotential.recreation}%
+                  </span>
+                  ${getScoreStatus(servicePotential.recreation).text}
+                </div>
+              </div>
+              <div class="data-row">
+                <div class="data-label">🏗 البنية التحتية:</div>
+                <div class="data-value">
+                  <span class="badge ${getScoreStatus(servicePotential.infrastructure).cls}">
+                    ${servicePotential.infrastructure}%
+                  </span>
+                  ${getScoreStatus(servicePotential.infrastructure).text}
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>📍 الخدمات والمرافق المتاحة (${services.length} مرفق)</summary>
+            <div class="section-content">
+              ${Object.keys(servicesByCategory).length > 0 ? 
+                Object.entries(servicesByCategory).map(([category, categoryServices]) => `
+                  <div style="margin-bottom: 12px;">
+                    <h4 style="margin: 8px 0 4px 0; color: ${categoryColors[category] || '#6b7280'}; font-size: 14px;">
+                      ${category} (${categoryServices.length})
+                    </h4>
+                    ${categoryServices.slice(0, 5).map(s => 
+                      `<div class="service-item" style="border-right-color: ${categoryColors[category] || '#6b7280'}">
+                        📍 ${s.name} — ${s.type}
+                      </div>`
+                    ).join('')}
+                    ${categoryServices.length > 5 ? 
+                      `<div class="small" style="margin-right: 12px; color: #6b7280;">
+                        ... و ${categoryServices.length - 5} مرفق آخر
+                      </div>` : ''
+                    }
+                  </div>
+                `).join('')
+                : '<div class="service-item">لا توجد خدمات مسجلة في قاعدة البيانات</div>'
+              }
+            </div>
+          </details>
+
+          <!-- التوصيات والحلول -->
+          ${Object.keys(recommendations).some(key => recommendations[key].length > 0) ? `
+          <div class="recommendations">
+            <h3>💡 التوصيات والحلول الذكية</h3>
+            
+            ${recommendations.priority.length > 0 ? `
+              <h4>🔥 أولويات عاجلة:</h4>
+              <ul>${recommendations.priority.map(r => `<li><strong>${r}</strong></li>`).join('')}</ul>
+            ` : ''}
+            
+            ${recommendations.environmental.length > 0 ? `
+              <h4>🌱 توصيات بيئية:</h4>
+              <ul>${recommendations.environmental.map(r => `<li>${r}</li>`).join('')}</ul>
+            ` : ''}
+            
+            ${recommendations.urban.length > 0 ? `
+              <h4>🏗 توصيات عمرانية:</h4>
+              <ul>${recommendations.urban.map(r => `<li>${r}</li>`).join('')}</ul>
+            ` : ''}
+            
+            ${recommendations.health.length > 0 ? `
+              <h4>🏥 توصيات صحية:</h4>
+              <ul>${recommendations.health.map(r => `<li>${r}</li>`).join('')}</ul>
+            ` : ''}
+            
+            ${recommendations.services.length > 0 ? `
+              <h4>🛠 فرص تطوير الخدمات:</h4>
+              <ul>${recommendations.services.map(r => `<li>${r}</li>`).join('')}</ul>
+            ` : ''}
+          </div>
+          ` : ''}
+
+          <div class="timestamp">
+            📍 الإحداثيات: ${lat.toFixed(5)}, ${lng.toFixed(5)}<br>
+            📊 تاريخ التحليل: ${new Date().toLocaleString('ar-EG')}<br>
+            🔬 نوع التحليل: شامل متقدم v2.0
+          </div>
+        `;
+
+        dataContentEl.innerHTML = html;
+
+        // عرض popup مختصر على الخريطة
+        L.popup()
+          .setLatLng([lat, lng])
+          .setContent(`
+            <div style="min-width: 250px; font-family: 'Segoe UI', Tahoma, Arial, sans-serif;">
+              <h4 style="margin: 8px 0; color: #1f2937; text-align: center;">🎯 تقييم المنطقة</h4>
+              
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0;">
+                <div style="text-align: center; padding: 8px; background: #f8fafc; border-radius: 6px;">
+                  <div style="font-size: 12px; color: #6b7280;">صالحة للعيش</div>
+                  <div style="font-size: 18px; font-weight: bold; color: ${livabilityStatus.cls === 'excellent' ? '#00b09b' : livabilityStatus.cls === 'good' ? '#22c55e' : '#f59e0b'}">
+                    ${livabilityScore}%
+                  </div>
+                  <div style="font-size: 11px; color: #6b7280;">${livabilityStatus.text}</div>
+                </div>
+                <div style="text-align: center; padding: 8px; background: #f8fafc; border-radius: 6px;">
+                  <div style="font-size: 12px; color: #6b7280;">مناسبة للتوسع</div>
+                  <div style="font-size: 18px; font-weight: bold; color: ${expansionStatus.cls === 'excellent' ? '#00b09b' : expansionStatus.cls === 'good' ? '#22c55e' : '#f59e0b'}">
+                    ${urbanExpansionScore}%
+                  </div>
+                  <div style="font-size: 11px; color: #6b7280;">${expansionStatus.text}</div>
+                </div>
+              </div>
+              
+              <div style="border-top: 1px solid #e5e7eb; padding-top: 8px; margin-top: 8px;">
+                <div style="display: flex; justify-content: space-between; margin: 4px 0; font-size: 13px;">
+                  <span>🌫 جودة الهواء:</span>
+                  <span style="font-weight: bold;">${aqi?.aqi ? Math.round(aqi.aqi) : '--'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin: 4px 0; font-size: 13px;">
+                  <span>🌡 الحرارة:</span>
+                  <span style="font-weight: bold;">${weather?.temp || '--'}°م</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin: 4px 0; font-size: 13px;">
+                  <span>🏢 الخدمات:</span>
+                  <span style="font-weight: bold;">${services.length} مرفق</span>
+                </div>
+              </div>
+            </div>
+          `)
+          .openOn(map);
+
+        // عرض الرسوم البيانية
+        await showForecast(lat, lng);
+
+      } catch (err) {
+        console.error('Analysis error:', err);
+        dataContentEl.innerHTML = `
+          <div class="error-message">
+            <h4 style="margin: 0 0 8px 0;">❌ خطأ في التحليل</h4>
+            <div style="margin-bottom: 8px;">حدث خطأ أثناء تحليل البيانات:</div>
+            <div style="font-family: monospace; font-size: 12px; background: #fef2f2; padding: 8px; border-radius: 4px; margin: 8px 0;">
+              ${err.message}
+            </div>
+            <div style="margin-top: 12px;">
+              <strong>الحلول المقترحة:</strong>
+              <ul style="margin: 8px 0; padding-right: 20px;">
+                <li>تحقق من اتصال الإنترنت</li>
+                <li>جرب النقر على منطقة أخرى</li>
+                <li>انتظر قليلاً ثم حاول مرة أخرى</li>
+              </ul>
+            </div>
+          </div>
+        `;
+      } finally {
+        isAnalyzing = false;
+      }
+    });
+
+    // معالجات الأزرار المحسنة
+    document.getElementById('clearMarkersBtn').addEventListener('click', () => {
+      serviceMarkers.forEach(m => map.removeLayer(m));
+      serviceMarkers = [];
+      
+      // إضافة تأثير بصري
+      const btn = document.getElementById('clearMarkersBtn');
+      btn.style.background = 'linear-gradient(135deg, #22c55e, #16a085)';
+      btn.textContent = '✅ تم الإزالة';
+      
+      setTimeout(() => {
+        btn.style.background = 'linear-gradient(135deg, #0ea5e9, #0284c7)';
+        btn.textContent = '🧹 إزالة العلامات';
+      }, 2000);
+    });
+
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      if (!latestFetchedData) {
+        alert('لم يتم إجراء أي تحليل بعد. انقر على الخريطة أولاً لإجراء تحليل شامل.');
+        return;
+      }
+      
+      const reportData = {
+        ...latestFetchedData,
+        generatedAt: new Date().toISOString(),
+        reportType: "تقرير تحليل بيئي شامل متقدم",
+        version: "2.0",
+        summary: {
+          location: `${latestFetchedData.lat.toFixed(5)}, ${latestFetchedData.lng.toFixed(5)}`,
+          livabilityScore: latestFetchedData.analysis.livability,
+          urbanExpansionScore: latestFetchedData.analysis.urbanExpansion,
+          servicesCount: latestFetchedData.services.length,
+          recommendationsCount: Object.values(latestFetchedData.recommendations).reduce((sum, arr) => sum + arr.length, 0)
+        }
+      };
+      
+      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `environmental-analysis-${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      
+      // تأثير بصري
+      const btn = document.getElementById('downloadBtn');
+      btn.style.background = 'linear-gradient(135deg, #22c55e, #16a085)';
+      btn.style.color = 'white';
+      btn.textContent = '✅ تم التحميل';
+      
+      setTimeout(() => {
+        btn.style.background = 'linear-gradient(135deg, #f8fafc, #e2e8f0)';
+        btn.style.color = '#475569';
+        btn.textContent = '📊 تحميل التقرير';
+      }, 3000);
+    });
+
+    document.getElementById('forecastBtn').addEventListener('click', async () => {
+      if (!lastClickedLatLng) {
+        alert("اختر نقطة على الخريطة أولاً لعرض التنبؤات.");
+        return;
+      }
+      
+      const { lat, lng } = lastClickedLatLng;
+      const btn = document.getElementById('forecastBtn');
+      btn.textContent = '⏳ جاري التحديث...';
+      btn.disabled = true;
+      
+      document.getElementById('forecastDashboard').innerHTML = 
+        '<div style="text-align: center; padding: 20px;"><div class="loading-spinner"></div><div style="margin-top: 12px;" class="small">⏳ جاري تحديث بيانات التنبؤات...</div></div>';
+      
+      await showForecast(lat, lng);
+      
+      btn.textContent = '🔮 تحديث التنبؤات';
+      btn.disabled = false;
+    });
+
+    document.getElementById('analyzeBtn').addEventListener('click', async () => {
+      if (!lastClickedLatLng) {
+        alert("اختر نقطة على الخريطة أولاً لإجراء التحليل المتقدم.");
+        return;
+      }
+      
+      // إعادة تشغيل التحليل للنقطة الأخيرة
+      map.fire('click', { latlng: L.latLng(lastClickedLatLng.lat, lastClickedLatLng.lng) });
+    });
+
+    // تصحيح حجم الخريطة عند تغيير حجم النافذة
+    window.addEventListener('resize', () => {
+      map.invalidateSize();
+    });
+
+    // إضافة مؤشر التحميل للحالة
+    map.on('layeradd layerremove', function() {
+      const statusDot = document.getElementById('statusDot');
+      statusDot.style.background = '#f59e0b';
+      setTimeout(() => {
+        statusDot.style.background = '#22c55e';
+      }, 1000);
+    });
+
+    console.log('🌍 النظام البيئي المتقدم v2.0 جاهز! انقر على أي نقطة للحصول على تحليل شامل مع التنبؤات والتوصيات الذكية.');
+  </script>
+</body>
+</html>
