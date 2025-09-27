@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>خريطة بيئية — KPIs (نسخة محسّنة ومُعلّقة)</title>
+
+  <!-- ====================
+       مكتبات الـ CSS والـ JS الخارجية
+       ==================== -->
+  <!-- Leaflet CSS (خريطة) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <!-- Leaflet Geocoder CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+
+  <!-- Chart.js و plugin لعرض القيم داخل الأعمدة -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+
+  <style>
+    /* ====================
+       أنماط الصفحة الأساسية
+       ==================== */
+    html, body { height:100%; margin:0; padding:0; font-family:"Segoe UI", Tahoma, Arial, "Noto Naskh Arabic", sans-serif; direction:rtl; background:#f0f4f8; }
+    #map { height:100vh; width:100%; box-sizing:border-box; }
+
+    /* صناديق المعلومات (اللوحة الجانبية) */
+    .info-panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      width: 400px;
+      max-height: 80vh;
+      overflow-y: auto;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      z-index: 1000;
+      color: #1f2937;
+      border: 1px solid #e5e7eb;
+    }
+    .info-panel h1 { font-size: 18px; margin: 0 0 12px; font-weight: 700; color: #111827; }
+    .info-panel .muted { color: #6b7280; font-size: 13px; line-height: 1.5; margin-bottom: 12px; }
+    details { margin-bottom: 12px; }
+    details summary {
+      font-weight: 700;
+      font-size: 15px;
+      padding: 10px;
+      background: #f9fafb;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    details summary:hover { background: #e5e7eb; }
+    details[open] summary { background: #e5e7eb; }
+    details .section-content { padding: 12px 8px; }
+    .data-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #f3f4f6;
+      font-size: 14px;
+    }
+    .data-label { font-weight: 600; color: #374151; }
+    .data-value { font-family: "Courier New", monospace; font-weight: 600; color: #1f2937; }
+    .badge { padding: 5px 10px; border-radius: 12px; font-size: 12px; color: #fff; display: inline-block; min-width: 50px; text-align: center; }
+    .good { background: #22c55e; } .moderate { background: #f59e0b; } .bad { background: #ef4444; } .neutral { background: #9ca3af; }
+    .timestamp { font-size: 12px; color: #6b7280; margin-top: 8px; }
+    .service-item { margin: 8px 0; font-size: 13px; color: #374151; }
+    .hud {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      background: #ffffff;
+      padding: 10px 16px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      z-index: 1000;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      font-size: 13px;
+      color: #1f2937;
+      border: 1px solid #e5e7eb;
+    }
+    @media (max-width: 700px) {
+      .info-panel { width: 90%; left: 5%; top: 10px; max-height: 70vh; padding: 16px; }
+      .hud { left: 5%; right: 5%; width: auto; padding: 8px 12px; }
+      .info-panel h1 { font-size: 16px; }
+      details summary { font-size: 14px; }
+      .data-row { font-size: 13px; }
+    }
+    .small { font-size: 13px; color: #6b7280; line-height: 1.5; }
+    .error-message { font-size: 13px; color: #ef4444; margin-top: 8px; }
+    #forecastDashboard { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <!-- الخريطة -->
+  <div id="map"></div>
+
+  <!-- اللوحة الجانبية للمعلومات -->
+  <div class="info-panel" id="infoPanel" aria-live="polite">
+    <h1>📊 المؤشرات البيئية والحضرية — لوحة تحكم</h1>
+    <div class="muted">انقر على الخريطة أو ابحث عن مكان لعرض بيانات بيئية، خدمات، ومؤشرات سكنية/اقتصادية.</div>
+    <div id="dataContent" style="margin-top: 12px; color: #374151;">
+      <div class="small">ابحث عن مكان أو انقر على الخريطة لبدء عرض البيانات.</div>
+    </div>
+    <div id="layerError" class="error-message" style="display: none;"></div>
+
+    <!-- أزرار التحكم -->
+    <div style="margin-top: 16px; display: flex; gap: 10px;">
+      <button id="clearMarkersBtn" style="padding: 10px 14px; border: none; background: #0ea5e9; color: #fff; border-radius: 10px; cursor: pointer; font-size: 14px;">
+        🧹 إزالة علامات الخدمات
+      </button>
+      <button id="downloadBtn" style="padding: 10px 14px; border: 1px solid #e5e7eb; background: #fff; color: #1f2937; border-radius: 10px; cursor: pointer; font-size: 14px;">
+        ⬇ تحميل JSON
+      </button>
+      <button id="forecastBtn" style="padding: 10px 14px; border: 1px solid #e5e7eb; background: #fff; color: #1f2937; border-radius: 10px; cursor: pointer; font-size: 14px;">
+        🔮 عرض التنبؤ
+      </button>
+    </div>
+
+    <!-- لوحة التنبؤ -->
+    <div id="forecastDashboard">
+      <canvas id="forecastChart" width="400" height="200"></canvas>
+    </div>
+
+    <!-- مفتاح الألوان -->
+    <div style="margin-top: 16px;">
+      <div class="small">مفاتيح التلوين:</div>
+      <div style="margin-top: 8px;">
+        <span class="badge good">جيد</span> <span style="margin-right: 8px;" class="small">مستويات منخفضة</span><br>
+        <span class="badge moderate">متوسط</span> <span style="margin-right: 8px;" class="small">مستويات معتدلة</span><br>
+        <span class="badge bad">سيء</span> <span style="margin-right: 8px;" class="small">مستويات مرتفعة</span><br>
+        <span class="badge neutral">غير متاح</span> <span style="margin-right: 8px;" class="small">بيانات غير متوفرة</span>
+      </div>
+    </div>
+
+    <div style="margin-top: 12px;" class="small">
+      ملاحظة: البيانات مأخوذة من مصادر حقيقية مثل Open-Meteo وOpenAQ مع قيود CORS محتملة.
+    </div>
+  </div>
+
+  <!-- الـ HUD (إحداثيات + وقت محلي + حالة) -->
+  <div class="hud" id="hud">
+    <div id="coords">📍 30.044, 31.235</div>
+    <div id="localTime">🕒 --:--:--</div>
+    <div id="statusDot" style="width: 12px; height: 12px; border-radius: 50%; background: #22c55e;"></div>
+  </div>
+
+  <!-- مكتبة Leaflet والـ geocoder -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+  <script>
+    /* ================================================================
+       إعداد المتغيرات العامة والـ config
+       - EARTHDATA_TOKEN: يحتاج توكن صالح لو استخدمت طبقات GIBS عبر GetFeatureInfo
+       - CACHE_TTL: مدة صلاحية الكاش في localStorage
+       ================================================================ */
+    const EARTHDATA_TOKEN = 'eyJ....REPLACE_WITH_REAL_TOKEN_IF_NEEDED'; // ضع توكن صالح إذا عندك (أو اتركه هكذا لمجرد التجريب)
+    const CACHE_TTL = 1000 * 60 * 10; // 10 دقائق
+    const MAP_START = { lat: 30.0444, lng: 31.2357, zoom: 6 };
+
+    /* ====================
+       أدوات الكاش باستخدام localStorage
+       - getCachedData/setCachedData : تحفظ JSON مع طابع زمني
+       ==================== */
+    function getCachedData(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj || !obj.timestamp) return null;
+        if ((Date.now() - obj.timestamp) < CACHE_TTL) return obj.data;
+        localStorage.removeItem(key);
+        return null;
+      } catch (e) {
+        console.warn('cache read error', e);
+        return null;
+      }
+    }
+    function setCachedData(key, data) {
+      try {
+        localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+      } catch (e) {
+        console.warn('cache write error', e);
+      }
+    }
+
+    /* عناصر الـ DOM اللي هنستخدمها كتير */
+    const dataContentEl = document.getElementById('dataContent');
+    const layerErrorEl = document.getElementById('layerError');
+
+    /* ====================
+       دوال مساعدة لعرض HUD
+       - updateHUDCoords: يحدث النص في الـ HUD
+       - updateLocalTime: يعرض الوقت المحلي (محلي من نظام المتصفح)
+       ملاحظة: استخدمت toLocaleString بالعربية المصرية
+       ==================== */
+    function updateHUDCoords(lat, lng) {
+      document.getElementById('coords').textContent = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+    function updateLocalTime() {
+      const now = new Date();
+      const fmt = now.toLocaleString('ar-EG', { hour12: false });
+      document.getElementById('localTime').textContent = `🕒 ${fmt}`;
+    }
+    setInterval(updateLocalTime, 1000);
+    updateLocalTime();
+
+    /* ====================
+       إعداد الخريطة (Leaflet)
+       - طبقات OSM و Stamen
+       - طبقات Overlay من GIBS و GHSL
+       ملاحظة: بعض طبقات GIBS تتطلب CORS أو token، لذلك غالبًا سيوجد fallback
+       ==================== */
+    const map = L.map('map').setView([MAP_START.lat, MAP_START.lng], MAP_START.zoom);
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+    const stamen = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.jpg', { attribution: 'Map tiles by Stamen Design' });
+
+    const overlayLayers = {};
+
+    // NDVI عبر NASA GIBS (WMS) — قد يحتاج Token أو proxy بسبب CORS
+    overlayLayers["🌿 NDVI (NASA GIBS)"] = L.tileLayer.wms('https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?', {
+      layers: 'MODIS_Terra_NDVI',
+      format: 'image/png',
+      transparent: true,
+      opacity: 0.6,
+      version: '1.3.0',
+      time: new Date().toISOString().split('T')[0],
+      attribution: 'NASA GIBS'
+    }).on('loading', () => console.log('NDVI layer loading...'))
+      .on('error', (e) => {
+        console.error('NDVI layer failed to load:', e);
+        layerErrorEl.style.display = 'block';
+        layerErrorEl.textContent = '❌ خطأ في تحميل طبقة NDVI — قد يكون السبب CORS أو توكن مفقود';
+      });
+
+    // LST (Land Surface Temperature) — أيضاً من GIBS
+    overlayLayers["🌡 LST (MODIS)"] = L.tileLayer.wms('https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?', {
+      layers: 'MODIS_Terra_Land_Surface_Temp_Day',
+      format: 'image/png',
+      transparent: true,
+      opacity: 0.6,
+      version: '1.3.0',
+      time: new Date().toISOString().split('T')[0],
+      attribution: 'NASA GIBS'
+    }).on('loading', () => console.log('LST layer loading...'))
+      .on('error', (e) => {
+        console.error('LST layer failed to load:', e);
+        layerErrorEl.style.display = 'block';
+        layerErrorEl.textContent = '❌ خطأ في تحميل طبقة LST — قد يكون السبب CORS أو توكن مفقود';
+      });
+
+    // طبقة التوسع الحضري من Copernicus GHSL
+    overlayLayers["🏙 Urban (Copernicus GHSL)"] = L.tileLayer.wms('https://image.discomap.eea.europa.eu/arcgis/services/GHSL/GHSL_builtin/MapServer/WmsServer?', {
+      layers: 'GHSL_builtin_2020',
+      format: 'image/png',
+      transparent: true,
+      opacity: 0.7,
+      version: '1.3.0',
+      attribution: 'Copernicus GHSL'
+    }).on('loading', () => console.log('Urban layer loading...'))
+      .on('error', (e) => {
+        console.error('Urban layer failed to load:', e);
+        layerErrorEl.style.display = 'block';
+        layerErrorEl.textContent = '❌ خطأ في تحميل طبقة Urban';
+      });
+
+    // أضف لوحة اختيار الطبقات إلى الخريطة
+    L.control.layers({ "OSM": osm, "Stamen Terrain": stamen }, overlayLayers, { collapsed: false }).addTo(map);
+
+    /* ====================
+       محرك البحث (Geocoder)
+       - عند اختيار نتيجة البحث نطلق حدث click لمحاكاة نقرة المستخدم
+       ==================== */
+    const geocoder = L.Control.geocoder({
+      defaultMarkGeocode: true,
+      placeholder: 'ابحث عن مكان... (مثل: القاهرة)',
+      errorMessage: 'لم يتم العثور على المكان'
+    }).addTo(map);
+
+    geocoder.on('markgeocode', function(e) {
+      const lat = e.geocode.center.lat;
+      const lng = e.geocode.center.lng;
+      map.setView([lat, lng], 13);
+      // نحاكي نقرة الخريطة كي يجري نفس سريان الكود
+      map.fire('click', { latlng: L.latLng(lat, lng) });
+    });
+
+    /* ====================
+       متغيرات الحالة
+       - serviceMarkers: مصفوفة الماركارات للخدمات القريبة
+       - latestFetchedData: آخر دفعة بيانات تم جلبها (لتحميلها JSON)
+       - lastClickedLatLng: آخر نقطة نقرت عليها
+       - forecastChart: مرجع الرسم البياني (Chart.js) حتى نقدر ندمره ونعيد رسمه
+       ==================== */
+    let serviceMarkers = [];
+    let latestFetchedData = null;
+    let lastClickedLatLng = null;
+    let forecastChart = null;
+
+    /* ====================
+       دوال مفيدة لتحويل نطاقات وخرائط
+       - bboxFromPoint: يبني BBOX صغير حول نقطة للاستخدام مع خدمات WMS
+       ==================== */
+    function bboxFromPoint(lat, lng, degrees = 0.01) {
+      const north = lat + degrees;
+      const south = lat - degrees;
+      const west = lng - degrees;
+      const east = lng + degrees;
+      return [west, south, east, north];
+    }
+
+    /* ====================
+       توابع مساعدة لحالة AQI/WQI (عرض لوني ونص)
+       ==================== */
+    function getAQIStatus(aqi) {
+      if (aqi === null || aqi === undefined) return { text: 'غير متاح', cls: 'neutral' };
+      if (aqi <= 50) return { text: 'جيد', cls: 'good' };
+      if (aqi <= 100) return { text: 'متوسط', cls: 'moderate' };
+      return { text: 'سيء', cls: 'bad' };
+    }
+    function getWQIStatus(wqi) {
+      if (wqi === null || wqi === undefined) return { text: 'غير متاح', cls: 'neutral' };
+      if (wqi >= 80) return { text: 'ممتاز', cls: 'good' };
+      if (wqi >= 50) return { text: 'متوسط', cls: 'moderate' };
+      return { text: 'ضعيف', cls: 'bad' };
+    }
+
+    /* ===========================================================
+       fetchAirQuality(lat,lng)
+       - يجرب OpenAQ أولاً، واذا فشل يجيب من Open-Meteo
+       - يحسب AQI فرعي من PM2.5, PM10, O3, CO وفق breakpoints
+       - يرجع كائن: { aqi, pm25, pm10, o3, co, co2, date, source }
+       ملاحظات مهمة:
+         * روابط template strings محاطة بـ backticks هنا
+         * نستخدم setCachedData لتحسين الأداء وتقليل عدد الطلبات المتكررة
+       =========================================================== */
+    async function fetchAirQuality(lat, lng) {
+      const cacheKey = `aqi_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+
+      const data = { aqi: null, pm25: null, pm10: null, o3: null, co: null, co2: null, date: null, source: null };
+
+      function calculateAQI(concentration, pollutant) {
+        // جداول مقطعية (breakpoints) مبنية على مقاييس معروفة — هنا تقريبية
+        const breakpoints = {
+          'pm25': [
+            [0.0, 12.0, 0, 50],
+            [12.1, 35.4, 51, 100],
+            [35.5, 55.4, 101, 150],
+            [55.5, 150.4, 151, 200],
+            [150.5, 250.4, 201, 300],
+            [250.5, 350.4, 301, 400],
+            [350.5, 500.4, 401, 500]
+          ],
+          'pm10': [
+            [0, 54, 0, 50],
+            [55, 154, 51, 100],
+            [155, 254, 101, 150],
+            [255, 354, 151, 200],
+            [355, 424, 201, 300],
+            [425, 504, 301, 400],
+            [505, 604, 401, 500]
+          ],
+          'o3': [
+            [0.000, 0.054, 0, 50],
+            [0.055, 0.070, 51, 100],
+            [0.071, 0.085, 101, 150],
+            [0.086, 0.105, 151, 200],
+            [0.106, 0.200, 201, 300]
+          ],
+          'co': [
+            [0.0, 4.4, 0, 50],
+            [4.5, 9.4, 51, 100],
+            [9.5, 12.4, 101, 150],
+            [12.5, 15.4, 151, 200],
+            [15.5, 30.4, 201, 300],
+            [30.5, 40.4, 301, 400],
+            [40.5, 50.4, 401, 500]
+          ]
+        };
+        if (!breakpoints[pollutant]) return null;
+        let c = concentration;
+        if (pollutant === 'pm25') c = Math.floor(c * 10) / 10;
+        else if (pollutant === 'pm10') c = Math.floor(c);
+        else if (pollutant === 'o3' || pollutant === 'co') c = Math.floor(c * 1000) / 1000;
+        for (const [bp_lo, bp_hi, i_lo, i_hi] of breakpoints[pollutant]) {
+          if (bp_lo <= c && c <= bp_hi) {
+            return Math.round(((i_hi - i_lo) / (bp_hi - bp_lo)) * (c - bp_lo) + i_lo);
+          }
+        }
+        return null;
+      }
+
+      // نجرّب OpenAQ أولاً
+      try {
+        const now = new Date().toISOString();
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const url = `https://api.openaq.org/v2/measurements?coordinates=${lat},${lng}&radius=25000&date_from=${yesterday}&date_to=${now}&parameter=pm25&parameter=pm10&parameter=o3&parameter=co&limit=100&order_by=datetime&sort=desc`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json.results && json.results.length > 0) {
+          const latestValues = {};
+          for (const meas of json.results) {
+            const param = meas.parameter.toLowerCase();
+            if (!latestValues[param]) {
+              latestValues[param] = meas.value;
+              if (param === 'pm25') data.pm25 = meas.value;
+              else if (param === 'pm10') data.pm10 = meas.value;
+              else if (param === 'o3') data.o3 = meas.value;
+              else if (param === 'co') data.co = meas.value;
+              data.date = meas.lastUpdated;
+            }
+          }
+          const subAQIs = [];
+          if (data.pm25 !== null) subAQIs.push(calculateAQI(data.pm25, 'pm25'));
+          if (data.pm10 !== null) subAQIs.push(calculateAQI(data.pm10, 'pm10'));
+          if (data.o3 !== null) subAQIs.push(calculateAQI(data.o3, 'o3'));
+          if (data.co !== null) subAQIs.push(calculateAQI(data.co, 'co'));
+          if (subAQIs.length > 0) {
+            data.aqi = Math.max(...subAQIs.filter(v => v !== null));
+            data.source = 'OpenAQ';
+            setCachedData(cacheKey, data);
+            return data;
+          }
+        }
+      } catch (e) {
+        console.warn('OpenAQ fetch failed, falling back to Open-Meteo', e);
+      }
+
+      // fallback: Open-Meteo air quality
+      try {
+        const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lng}&current=us_aqi,pm2_5,pm10,ozone,carbon_monoxide,carbon_dioxide`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const current = json.current || {};
+        data.aqi = current.us_aqi ?? null;
+        data.pm25 = current.pm2_5 ?? null;
+        data.pm10 = current.pm10 ?? null;
+        data.o3 = current.ozone ?? null;
+        data.co = current.carbon_monoxide ?? null;
+        data.co2 = current.carbon_dioxide ?? null;
+        data.date = current.time ?? new Date().toISOString();
+        data.source = 'Open-Meteo';
+        setCachedData(cacheKey, data);
+        return data;
+      } catch (e) {
+        console.error('fetchAirQuality error', e);
+        return data;
+      }
+    } // end fetchAirQuality
+
+    /* ===================================================
+       fetchWeather(lat,lng)
+       - يجيب الطقس الحالي والرطوبة من Open-Meteo
+       - يحفظ الكاش
+       =================================================== */
+    async function fetchWeather(lat, lng) {
+      const cacheKey = `weather_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&hourly=relativehumidity_2m&timezone=auto`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const temp = json.current_weather?.temperature ?? null;
+        let humidity = null;
+        if (json.hourly && json.hourly.relativehumidity_2m && json.hourly.time) {
+          humidity = json.hourly.relativehumidity_2m[0] ?? null;
+        }
+        const result = { temp, humidity, date: new Date().toISOString() };
+        setCachedData(cacheKey, result);
+        return result;
+      } catch (e) {
+        console.error('fetchWeather error', e);
+        return { temp: null, humidity: null, date: null };
+      }
+    }
+
+    /* ===================================================
+       fetchSocialServices(lat,lng)
+       - يستخدم Overpass (OpenStreetMap) للبحث عن خدمات حول النقطة:
+         hospitals, clinics, pharmacy, school, university, bus_stop, substation, industrial, residential
+       - يرجع مصفوفة عناصر مع الإحداثيات والـ tags
+       - قد تواجه قيود rate-limits من Overpass؛ لو احتجت استقرار استخدم proxy أو خادمك الخاص
+       =================================================== */
+    async function fetchSocialServices(lat, lng) {
+      const cacheKey = `services_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+      try {
+        const overpassQuery = `
+          [out:json][timeout:25];
+          (
+            node(around:7500,${lat},${lng})["amenity"~"hospital|clinic|pharmacy|school|university"];
+            way(around:7500,${lat},${lng})["amenity"~"hospital|clinic|pharmacy|school|university"];
+            node(around:7500,${lat},${lng})["highway"="bus_stop"];
+            node(around:7500,${lat},${lng})["power"="substation"];
+            node(around:7500,${lat},${lng})["landuse"="industrial"];
+            way(around:7500,${lat},${lng})["landuse"="residential"];
+          );
+          out center 100;
+        `;
+        const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const elems = json.elements || [];
+        const mapped = elems.map(el => {
+          const latPt = el.lat ?? el.center?.lat;
+          const lonPt = el.lon ?? el.center?.lon;
+          const tags = el.tags || {};
+          let type = 'خدمة';
+          if (tags.amenity) type = tags.amenity;
+          else if (tags.highway) type = tags.highway;
+          else if (tags.power) type = tags.power;
+          else if (tags.landuse) type = tags.landuse;
+          return {
+            id: el.id,
+            name: tags.name || type || 'غير معروف',
+            type,
+            lat: latPt,
+            lon: lonPt,
+            tags
+          };
+        }).filter(it => it.lat && it.lon);
+        setCachedData(cacheKey, mapped);
+        return mapped;
+      } catch (e) {
+        console.error('fetchSocialServices error', e);
+        return [];
+      }
+    }
+
+    /* ===================================================
+       fetchNdviFromGibs(lat,lng)
+       - محاولة جلب NDVI عبر GIBS GetFeatureInfo (قد يتطلب توكن)
+       - لو فشل نرجع قيمة افتراضية 0.5
+       - ملاحظة: استخدام GetFeatureInfo عبر المتصفح غالبًا يواجه CORS أو auth issues
+       =================================================== */
+    async function fetchNdviFromGibs(lat, lng) {
+      const cacheKey = `ndvi_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const [west, south, east, north] = bboxFromPoint(lat, lng, 0.01);
+        const ndviUrl = `https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&LAYERS=MODIS_Terra_NDVI&STYLES=&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:4326&BBOX=${west},${south},${east},${north}&WIDTH=50&HEIGHT=50&QUERY_LAYERS=MODIS_Terra_NDVI&INFO_FORMAT=application/json&TIME=${today}`;
+        const res = await fetch(ndviUrl, { headers: { 'Authorization': `Bearer ${EARTHDATA_TOKEN}` } });
+        if (!res.ok) {
+          console.warn('NDVI GIBS returned non-ok', res.status);
+          const fallback = 0.5;
+          setCachedData(cacheKey, fallback);
+          return fallback;
+        }
+        const json = await res.json();
+        const val = json?.features?.[0]?.properties?.value ?? json?.data?.[0] ?? null;
+        const finalVal = (typeof val === 'number') ? val : 0.5;
+        setCachedData(cacheKey, finalVal);
+        return finalVal;
+      } catch (e) {
+        console.warn('fetchNdviFromGibs error (fallback)', e);
+        const fallback = 0.5;
+        setCachedData(cacheKey, fallback);
+        return fallback;
+      }
+    }
+
+    /* ===================================================
+       fetchLstFromGibs(lat,lng)
+       - محاولة جلب LST (Land Surface Temperature) عبر GIBS GetFeatureInfo
+       - نُعيد قيمة افتراضية عند الفشل
+       =================================================== */
+    async function fetchLstFromGibs(lat, lng) {
+      const cacheKey = `lst_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const [west, south, east, north] = bboxFromPoint(lat, lng, 0.01);
+        const lstUrl = `https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&LAYERS=MODIS_Terra_Land_Surface_Temp_Day&STYLES=&FORMAT=image/png&TRANSPARENT=true&CRS=EPSG:4326&BBOX=${west},${south},${east},${north}&WIDTH=50&HEIGHT=50&QUERY_LAYERS=MODIS_Terra_Land_Surface_Temp_Day&INFO_FORMAT=application/json&TIME=${today}`;
+        const res = await fetch(lstUrl, { headers: { 'Authorization': `Bearer ${EARTHDATA_TOKEN}` } });
+        if (!res.ok) {
+          console.warn('LST GIBS returned non-ok', res.status);
+          const fallback = 30;
+          setCachedData(cacheKey, fallback);
+          return fallback;
+        }
+        const json = await res.json();
+        const val = json?.features?.[0]?.properties?.value ?? null;
+        const finalVal = (typeof val === 'number') ? val : 30;
+        setCachedData(cacheKey, finalVal);
+        return finalVal;
+      } catch (e) {
+        console.warn('fetchLstFromGibs error (fallback)', e);
+        const fallback = 30;
+        setCachedData(cacheKey, fallback);
+        return fallback;
+      }
+    }
+
+    /* ===================================================
+       fetchSoilExposureFromTerrascope(lat,lng)
+       - يصل إلى خدمة Terrascope (مثال) للحصول على NDVI/تدهور الأراضي
+       - يرجع قيمة افتراضية في حال الخطأ
+       =================================================== */
+    async function fetchSoilExposureFromTerrascope(lat, lng) {
+      const cacheKey = `soil_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+      try {
+        const [west, south, east, north] = bboxFromPoint(lat, lng, 0.01);
+        const soilUrl = `https://services.terrascope.be/ows/ndvi/services?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=NDVI&styles=&format=image/png&crs=EPSG:4326&bbox=${west},${south},${east},${north}&width=50&height=50&i=25&j=25&info_format=application/json`;
+        const res = await fetch(soilUrl);
+        if (!res.ok) {
+          console.warn('Terrascope soil returned non-ok', res.status);
+          const fallback = 10;
+          setCachedData(cacheKey, fallback);
+          return fallback;
+        }
+        const json = await res.json();
+        // بعض خدمات تُرجع "change" أو قيم داخل الخصائص
+        const change = json?.features?.[0]?.properties?.change ?? json?.data?.[0] ?? null;
+        const finalVal = (typeof change === 'number') ? change : 10;
+        setCachedData(cacheKey, finalVal);
+        return finalVal;
+      } catch (e) {
+        console.warn('fetchSoilExposureFromTerrascope error', e);
+        const fallback = 10;
+        setCachedData(cacheKey, fallback);
+        return fallback;
+      }
+    }
+
+    /* ===================================================
+       fetchPopulationGrowth(lat,lng)
+       - مثال استخدام WorldPop API (غالبًا يحتاج مفتاح/صلاحية)
+       - نعيد قيمة افتراضية عند الفشل
+       =================================================== */
+    async function fetchPopulationGrowth(lat, lng) {
+      const cacheKey = `pop_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+      try {
+        const year = 2025;
+        const [west, south, east, north] = bboxFromPoint(lat, lng, 0.01);
+        const popUrl = `https://api.worldpop.org/v1/sample?dataset=wpgppop&ids=EGY&resolution=100&year=${year}&bbox=${west},${south},${east},${north}`;
+        const res = await fetch(popUrl);
+        if (!res.ok) {
+          console.warn('WorldPop returned non-ok', res.status);
+          const fallback = 2.5;
+          setCachedData(cacheKey, fallback);
+          return fallback;
+        }
+        const json = await res.json();
+        const growth = json?.growth ?? json?.data?.growth ?? 2.5;
+        const finalVal = (typeof growth === 'number') ? growth : 2.5;
+        setCachedData(cacheKey, finalVal);
+        return finalVal;
+      } catch (e) {
+        console.warn('fetchPopulationGrowth error', e);
+        const fallback = 2.5;
+        setCachedData(cacheKey, fallback);
+        return fallback;
+      }
+    }
+
+    /* ===================================================
+       fetchEmploymentBalance(lat,lng)
+       - مثال لطلب بيانات توظيف/اقتصاد (هنا استخدمت endpoint توضيحي)
+       - لو غير متاح نرجع قيمة افتراضية
+       =================================================== */
+    async function fetchEmploymentBalance(lat, lng) {
+      const cacheKey = `employment_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+      try {
+        const url = `https://api.globalforestwatch.org/v1/employment?geojson={"type":"Point","coordinates":[${lng},${lat}]}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.warn('WRI employment not available', res.status);
+          const fallback = 1.0;
+          setCachedData(cacheKey, fallback);
+          return fallback;
+        }
+        const json = await res.json();
+        const balance = json?.balance ?? 1.0;
+        setCachedData(cacheKey, balance);
+        return balance;
+      } catch (e) {
+        console.warn('fetchEmploymentBalance error', e);
+        const fallback = 1.0;
+        setCachedData(cacheKey, fallback);
+        return fallback;
+      }
+    }
+
+    /* ===================================================
+       fetchFloodRisk(lat,lng)
+       - مثال يتصل بـ USGS أو خدمة فيضان (هنا توضيحي)
+       - نرجع قيمة افتراضية لو الخدمة غير متاحة
+       =================================================== */
+    async function fetchFloodRisk(lat, lng) {
+      const cacheKey = `flood_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+      try {
+        const url = `https://waterservices.usgs.gov/nwis/floodstatus/?format=rdb&sites=near-lat=${lat},long=${lng},radius=50`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.warn('USGS flood endpoint non-ok', res.status);
+          const fallback = 30;
+          setCachedData(cacheKey, fallback);
+          return fallback;
+        }
+        const text = await res.text();
+        const high = text.includes('High');
+        const val = high ? 80 : 30;
+        setCachedData(cacheKey, val);
+        return val;
+      } catch (e) {
+        console.warn('fetchFloodRisk error', e);
+        const fallback = 30;
+        setCachedData(cacheKey, fallback);
+        return fallback;
+      }
+    }
+
+    /* ===================================================
+       fetchRealData(lat,lng, {services, weather, aqi})
+       - يجمع كل البيانات الحقيقية المتاحة (NDVI, LST, Soil exposure, population growth, employment, floodRisk)
+       - يحسب مؤشرات مشتقة (greenspace, wqi, heatwave, resilience, ... )
+       - يستخدم parallel Promise.all لسرعة الأداء
+       =================================================== */
+    async function fetchRealData(lat, lng, { services = null, weather = null, aqi = null } = {}) {
+      const cacheKey = `realdata_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+      try {
+        if (!services) services = await fetchSocialServices(lat, lng);
+        if (!weather) weather = await fetchWeather(lat, lng);
+        if (!aqi) aqi = await fetchAirQuality(lat, lng);
+
+        const [ndvi, uhi, soilExposure, popGrowth, employment, floodRisk] = await Promise.all([
+          fetchNdviFromGibs(lat, lng),
+          fetchLstFromGibs(lat, lng),
+          fetchSoilExposureFromTerrascope(lat, lng),
+          fetchPopulationGrowth(lat, lng),
+          fetchEmploymentBalance(lat, lng),
+          fetchFloodRisk(lat, lng)
+        ]).catch(err => {
+          console.warn('Some real data fetch failed', err);
+          return [0.5, 30, 10, 2.5, 1.0, 30];
+        });
+
+        const greenspace = (ndvi !== null) ? Math.round(ndvi * 100) : 50;
+        const healthcareCount = services.filter(s => (s.type && (s.type.includes('hospital') || s.type.includes('clinic') || s.type.includes('pharmacy')))).length;
+        const housingCount = services.filter(s => (s.type && s.type.includes('residential'))).length;
+        const transportCount = services.filter(s => (s.type && s.type.includes('bus_stop'))).length;
+        const electricityCount = services.filter(s => (s.type && s.type.includes('substation'))).length;
+        const industrialCount = services.filter(s => (s.type && s.type.includes('industrial'))).length;
+        const urbanCount = services.filter(s => (s.type && s.type.includes('urban'))).length;
+
+        const results = {
+          ndvi, uhi, soilExposure,
+          wqi: Math.round(Math.max(0, Math.min(100, 80 - (aqi?.aqi ?? 50) * 0.1))),
+          greenspace,
+          healthcare: healthcareCount,
+          housingDensity: housingCount * 10 + 50,
+          transport: transportCount > 0 ? 10 : 25,
+          electricity: electricityCount > 0 ? 95 : 80,
+          popGrowth,
+          urbanExpansion: urbanCount * 0.5 + 2,
+          employment,
+          industrial: industrialCount * 2 + 10,
+          heatwave: (weather?.temp ?? 30) > 35 ? 80 : (weather?.temp ?? 30) > 30 ? 50 : 20,
+          floodRisk,
+          healthRisk: (aqi?.aqi ?? 50) > 100 ? 80 : (aqi?.aqi ?? 50) > 50 ? 50 : 20,
+          resilience: Math.round((ndvi ?? 0.5) * 100)
+        };
+        setCachedData(cacheKey, results);
+        return results;
+      } catch (e) {
+        console.error('fetchRealData failed fully', e);
+        const fallback = {
+          wqi: 75, ndvi: 0.6, uhi: 32, soilExposure: 15, greenspace: 60,
+          healthcare: 3, housingDensity: 80, transport: 15, electricity: 90,
+          popGrowth: 2.5, urbanExpansion: 5, employment: 1.2, industrial: 12,
+          heatwave: 40, floodRisk: 25, healthRisk: 30, resilience: 70
+        };
+        return fallback;
+      }
+    }
+
+    /* ===================================================
+       fetchForecast(lat,lng)
+       - يجلب توقعات الطقس (3 أيام) وPM2.5 من Open-Meteo
+       - يعيد بيانات مجمعة يومياً (متوسط الحرارة ومتوسط PM2.5)
+       =================================================== */
+    async function fetchForecast(lat, lng) {
+      const cacheKey = `forecast_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+      // - ملاحظة: علشان نجرب دايمًا أحدث البيانات عطلنا استخدام الكاش
+      // const cached = getCachedData(cacheKey);
+      // if (cached) return cached;
+      try {
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m&forecast_days=3&timezone=auto`;
+        const airUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lng}&hourly=pm2_5&forecast_days=3`;
+        const [weatherRes, airRes] = await Promise.all([ fetch(weatherUrl), fetch(airUrl) ]);
+        if (!weatherRes.ok || !airRes.ok) throw new Error(`HTTP error: ${weatherRes.status}, ${airRes.status}`);
+        const weatherData = await weatherRes.json();
+        const airData = await airRes.json();
+        const labels = weatherData.hourly.time.slice(0, 72).map(time => new Date(time).toLocaleDateString('ar-EG'));
+        const temps = weatherData.hourly.temperature_2m.slice(0, 72);
+        const pm25 = airData.hourly.pm2_5.slice(0, 72);
+        const dailyData = { labels: [], temps: [], pm25: [] };
+        for (let i = 0; i < labels.length; i += 24) {
+          const dayLabels = labels[i];
+          const dayTemps = temps.slice(i, i + 24);
+          const dayPm25 = pm25.slice(i, i + 24);
+          dailyData.labels.push(dayLabels);
+          dailyData.temps.push((dayTemps.reduce((a, b) => a + b, 0) / dayTemps.length).toFixed(1));
+          dailyData.pm25.push((dayPm25.reduce((a, b) => a + b, 0) / dayPm25.length).toFixed(1));
+        }
+        setCachedData(cacheKey, dailyData);
+        return dailyData;
+      } catch (err) {
+        console.error('Error fetching forecast:', err);
+        return null;
+      }
+    }
+
+    /* ===================================================
+       showForecast(lat,lng)
+       - يرسم الرسم البياني في الـ canvas داخل #forecastChart
+       - يستخدم Chart.js و plugin datalabels
+       =================================================== */
+    async function showForecast(lat, lng) {
+      const forecast = await fetchForecast(lat, lng);
+      const ctx = document.getElementById("forecastChart").getContext("2d");
+      if (forecastChart) {
+        forecastChart.destroy();
+        console.log('Destroyed previous chart');
+      }
+      if (!forecast) {
+        document.getElementById('forecastDashboard').innerHTML = '<div class="small">❌ خطأ في جلب بيانات التنبؤ. حاوِل مرة أخرى.</div>';
+        return;
+      }
+
+      const pmColors = [];
+      const pmLabels = [];
+      forecast.pm25.forEach(v => {
+        const val = Number(v);
+        if (val < 25) { pmColors.push("rgba(0,200,0,0.7)"); pmLabels.push("آمن ✅"); }
+        else if (val < 50) { pmColors.push("rgba(255,206,86,0.8)"); pmLabels.push("مقبول ⚠"); }
+        else { pmColors.push("rgba(255,99,132,0.8)"); pmLabels.push("خطر ❌"); }
+      });
+
+      // انشاء الرسم البياني
+      forecastChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: forecast.labels,
+          datasets: [
+            { label: "🌡 متوسط الحرارة (°C)", data: forecast.temps, backgroundColor: "rgba(54,162,235,0.6)" },
+            { label: "💨 متوسط PM2.5 (µg/m³)", data: forecast.pm25, backgroundColor: pmColors }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: "bottom" },
+            tooltip: { enabled: true },
+            datalabels: {
+              color: "#000",
+              font: { weight: "bold" },
+              anchor: "end",
+              align: "start",
+              formatter: function(value, context) {
+                if (context.dataset.label.includes("PM2.5")) return pmLabels[context.dataIndex];
+                return null;
+              }
+            }
+          },
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'القيم' } },
+            x: { title: { display: true, text: 'الأيام' } }
+          }
+        },
+        plugins: [ChartDataLabels]
+      });
+      console.log('New chart rendered for lat:', lat, 'lng:', lng);
+    }
+
+    /* ====================
+       تفاعل الخريطة:
+       - mousemove: تحديث HUD إحداثيات الماوس
+       - click: يجلب كل البيانات (AQI, weather, services, forecast, realData) ويعرّضها في info-panel
+       ==================== */
+    map.on('mousemove', function(e) { updateHUDCoords(e.latlng.lat, e.latlng.lng); });
+
+    map.on('click', async function(e) {
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+      lastClickedLatLng = { lat, lng };
+      dataContentEl.innerHTML = '<div class="small">⏳ جاري جلب البيانات...</div>';
+      layerErrorEl.style.display = 'none';
+
+      // ازالة الماركارات القديمة
+      serviceMarkers.forEach(m => map.removeLayer(m));
+      serviceMarkers = [];
+
+      try {
+        // نجلب في نفس الوقت: جودة الهواء، الطقس، الخدمات، والتنبؤ
+        const [aqi, weather, services, forecast] = await Promise.all([
+          fetchAirQuality(lat, lng),
+          fetchWeather(lat, lng),
+          fetchSocialServices(lat, lng),
+          fetchForecast(lat, lng)
+        ]);
+
+        // نجمع البيانات الحقيقية المحسوبة
+        const realData = await fetchRealData(lat, lng, { services, weather, aqi });
+
+        // نخزن اخر بيانات للتحميل
+        latestFetchedData = { lat, lng, fetchedAt: new Date().toISOString(), aqi, weather, services, realData };
+
+        // اضف الماركارت للخدمات القريبة
+        services.forEach(s => {
+          try {
+            const marker = L.marker([s.lat, s.lon]).addTo(map)
+              .bindPopup(`<b>${s.name}</b><br>نوع: ${s.type}`);
+            serviceMarkers.push(marker);
+          } catch (err) {
+            console.warn('marker error', err, s);
+          }
+        });
+
+        // احسب حالة الـ AQI و WQI لعرض Badges
+        const aqiStatus = getAQIStatus(aqi?.aqi);
+        const wqiStatus = getWQIStatus(realData.wqi);
+
+        // نص الـ HTML اللي هيعرض في اللوحة الجانبية
+        const html = `
+          <details open>
+            <summary>🌍 البيئة والموارد الطبيعية</summary>
+            <div class="section-content">
+              <div class="data-row"><div class="data-label">🌫 AQI (${aqi?.source ?? 'غير متاح'}):</div><div class="data-value"><span class="badge ${aqiStatus.cls}">${aqi?.aqi ?? '--'}</span> ${aqiStatus.text}</div></div>
+              <div class="data-row"><div class="data-label">🌫 PM2.5:</div><div class="data-value">${aqi?.pm25 !== null ? Number(aqi.pm25).toFixed(1) + ' µg/m³' : '--'}</div></div>
+              <div class="data-row"><div class="data-label">🌫 PM10:</div><div class="data-value">${aqi?.pm10 !== null ? Number(aqi.pm10).toFixed(1) + ' µg/m³' : '--'}</div></div>
+              <div class="data-row"><div class="data-label">🌫 الأوزون (O3):</div><div class="data-value">${aqi?.o3 !== null ? Number(aqi.o3).toFixed(1) + ' ppb' : '--'}</div></div>
+              <div class="data-row"><div class="data-label">🌫 أول أكسيد الكربون (CO):</div><div class="data-value">${aqi?.co !== null ? Number(aqi.co).toFixed(1) + ' ppb' : '--'}</div></div>
+              <div class="data-row"><div class="data-label">🌫 ثاني أكسيد الكربون (CO2):</div><div class="data-value">${aqi?.co2 !== null ? Number(aqi.co2).toFixed(1) + ' ppm' : '--'}</div></div>
+              <div class="timestamp">🕒 آخر تحديث: ${aqi?.date ?? '--'}</div>
+              <div class="data-row"><div class="data-label">💧 WQI (محسوب تقريبي):</div><div class="data-value"><span class="badge ${wqiStatus.cls}">${realData.wqi ?? '--'}</span> ${wqiStatus.text}</div></div>
+              <div class="data-row"><div class="data-label">🌿 NDVI (NASA GIBS):</div><div class="data-value">${(realData.ndvi !== undefined) ? Number(realData.ndvi).toFixed(3) : '--'}</div></div>
+              <div class="data-row"><div class="data-label">🌡 جزيرة الحرارة (LST):</div><div class="data-value">${realData.uhi ?? '--'} °م</div></div>
+              <div class="data-row"><div class="data-label">🏜 تدهور الأراضي:</div><div class="data-value">${realData.soilExposure ?? '--'} %</div></div>
+              <div class="data-row"><div class="data-label">🌡 الحرارة (Open-Meteo):</div><div class="data-value">${weather?.temp ?? '--'} °م</div></div>
+              <div class="data-row"><div class="data-label">💧 الرطوبة (Open-Meteo):</div><div class="data-value">${weather?.humidity ?? '--'} %</div></div>
+              <div class="timestamp">🕒 آخر تحديث الطقس: ${weather?.date ?? '--'}</div>
+            </div>
+          </details>
+
+          <details>
+            <summary>🏬 البنية التحتية وجودة الحياة</summary>
+            <div class="section-content">
+              <div class="data-row"><div class="data-label">🌳 المساحات الخضراء:</div><div class="data-value">${realData.greenspace ?? '--'} %</div></div>
+              <div class="data-row"><div class="data-label">🏥 الوصول للرعاية الصحية:</div><div class="data-value">${realData.healthcare ?? '--'} منشأة</div></div>
+              <div class="data-row"><div class="data-label">🏠 كثافة الإسكان:</div><div class="data-value">${realData.housingDensity ?? '--'} وحدة/كم²</div></div>
+              <div class="data-row"><div class="data-label">🚍 الوصول للمواصلات:</div><div class="data-value">${realData.transport ?? '--'} دقيقة</div></div>
+              <div class="data-row"><div class="data-label">⚡ الوصول للكهرباء:</div><div class="data-value">${realData.electricity ?? '--'} %</div></div>
+            </div>
+          </details>
+
+          <details>
+            <summary>📈 النمو الحضري والاقتصاد</summary>
+            <div class="section-content">
+              <div class="data-row"><div class="data-label">👥 نمو السكان:</div><div class="data-value">${realData.popGrowth ?? '--'} %</div></div>
+              <div class="data-row"><div class="data-label">🏙 التوسع العمراني:</div><div class="data-value">${realData.urbanExpansion ?? '--'} كم²/سنة</div></div>
+              <div class="data-row"><div class="data-label">💼 توازن الوظائف:</div><div class="data-value">${realData.employment ?? '--'}</div></div>
+              <div class="data-row"><div class="data-label">🏭 البصمة الصناعية:</div><div class="data-value">${realData.industrial ?? '--'} كم²</div></div>
+            </div>
+          </details>
+
+          <details>
+            <summary>🌦 التغير المناخي والصحة العامة</summary>
+            <div class="section-content">
+              <div class="data-row"><div class="data-label">🔥 التعرض للموجات الحارة:</div><div class="data-value">${realData.heatwave ?? '--'} %</div></div>
+              <div class="data-row"><div class="data-label">🌊 مخاطر الفيضانات:</div><div class="data-value">${realData.floodRisk ?? '--'} %</div></div>
+              <div class="data-row"><div class="data-label">🩺 مخاطر التلوث الصحية:</div><div class="data-value">${realData.healthRisk ?? '--'} %</div></div>
+              <div class="data-row"><div class="data-label">🛡 درجة المرونة المناخية:</div><div class="data-value">${realData.resilience ?? '--'} %</div></div>
+            </div>
+          </details>
+
+          <details>
+            <summary>🏥 الخدمات الاجتماعية القريبة</summary>
+            <div class="section-content">
+              ${services.length > 0 ? services.map(s => `<div class="service-item">📍 ${s.name} — (${s.type})</div>`).join('') : '<div class="service-item">لا توجد خدمات قريبة</div>'}
+            </div>
+          </details>
+
+          <div style="margin-top: 12px; font-size: 12px; color: #6b7280;">
+            📍 ${lat.toFixed(5)}, ${lng.toFixed(5)} — بيانات مأخوذة في: ${new Date().toLocaleString('ar-EG')}
+          </div>
+        `;
+        dataContentEl.innerHTML = html;
+
+        // عرض Popup مختصر على الخريطة
+        L.popup()
+          .setLatLng([lat, lng])
+          .setContent(`
+            <b>AQI (${aqi?.source ?? 'غير متاح'}):</b> ${aqi?.aqi ?? '--'} (${aqiStatus.text})<br>
+            <b>PM2.5:</b> ${aqi?.pm25 !== null ? Number(aqi.pm25).toFixed(1) + ' µg/m³' : '--'}<br>
+            <b>PM10:</b> ${aqi?.pm10 !== null ? Number(aqi.pm10).toFixed(1) + ' µg/m³' : '--'}<br>
+            <b>O3:</b> ${aqi?.o3 !== null ? Number(aqi.o3).toFixed(1) + ' ppb' : '--'}<br>
+            <b>CO:</b> ${aqi?.co !== null ? Number(aqi.co).toFixed(1) + ' ppb' : '--'}<br>
+            <b>CO2:</b> ${aqi?.co2 !== null ? Number(aqi.co2).toFixed(1) + ' ppm' : '--'}<br>
+            <b>WQI (تقريبي):</b> ${realData.wqi ?? '--'} (${wqiStatus.text})<br>
+            <b>🌡 الحرارة:</b> ${weather?.temp ?? '--'} °م<br>
+            <b>الخدمات القريبة:</b> ${services.length > 0 ? services.length + ' مكان' : 'لا توجد'}
+          `)
+          .openOn(map);
+
+        // تحديث لوحة التنبؤ
+        await showForecast(lat, lng);
+
+      } catch (err) {
+        console.error('click handler error', err);
+        dataContentEl.innerHTML = '<div class="small">❌ حدث خطأ أثناء جلب البيانات — افتح Console لرؤية التفاصيل.</div>';
+        document.getElementById('forecastDashboard').innerHTML = '<div class="small">❌ خطأ في جلب بيانات التنبؤ.</div>';
+      }
+    });
+
+    /* ====================
+       أزرار واجهة المستخدم (Clear markers, Download JSON, Forecast button)
+       - clearMarkersBtn: يزيل كل الماركارت على الخريطة
+       - downloadBtn: يحمّل latestFetchedData كملف JSON
+       - forecastBtn: يعيد فتح/تحديث التنبؤ لنقطة النقر الأخيرة
+       ==================== */
+    document.getElementById('clearMarkersBtn').addEventListener('click', () => {
+      serviceMarkers.forEach(m => map.removeLayer(m));
+      serviceMarkers = [];
+    });
+
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      if (!latestFetchedData) {
+        alert('لم يتم جلب أي بيانات بعد. انقر على الخريطة أولاً.');
+        return;
+      }
+      const blob = new Blob([JSON.stringify(latestFetchedData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `map-data-${new Date().toISOString().slice(0,19)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('forecastBtn').addEventListener('click', async () => {
+      if (!lastClickedLatLng) { alert("اختار نقطة على الخريطة أولاً."); return; }
+      const { lat, lng } = lastClickedLatLng;
+      document.getElementById('forecastDashboard').innerHTML = '<div class="small">⏳ جاري جلب بيانات التنبؤ...</div>';
+      await showForecast(lat, lng);
+    });
+
+    // تصحيح حجم الخريطة عند تغيير حجم النافذة
+    window.addEventListener('resize', () => { map.invalidateSize(); });
+
+    console.log('خريطة بيئية — جاهزة. انقر على الخريطة أو استخدم البحث لعرض البيانات. افتح Console لتتبع تحميل الطبقات.');
+  </script>
+</body>
+</html>
